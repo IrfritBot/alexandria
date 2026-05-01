@@ -1,0 +1,32 @@
+.home {
+  align-items: center;
+  display: flex;
+  min-height: 100vh;
+  padding: 48px;
+}
+
+.home section {
+  max-width: 640px;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.home h1 {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+  margin: 0 0 20px;
+}
+
+.home p {
+  color: var(--muted);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin: 0;
+}
