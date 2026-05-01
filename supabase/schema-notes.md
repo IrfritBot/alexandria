@@ -38,3 +38,9 @@
 - `public.create_workspace_with_admin(p_name text, p_slug text, p_context_description text)` exists because the first workspace insert and first admin membership insert must commit atomically before ordinary workspace-admin RLS can prove authority. It resolves the caller's `profiles.id` from `auth.uid()`, requires Task 3 profile sync to have completed, validates name/slug/context inputs, inserts the `workspaces` row with `tier='basic'`, inserts the creator's `workspace_members.role='admin'` row, writes a matching `audit_log_workspace` row with `action='workspace_created'`, and returns the new workspace id.
 - `create_workspace_with_admin` is also `SECURITY DEFINER` with `search_path = public, pg_temp`; execution is revoked from public, anon, service-role, and the MCP executor, then granted only to `authenticated`. Slug uniqueness is surfaced with SQLSTATE `23505`, and route handlers use the cookie-backed user client instead of `service_role` for workspace creation.
 - Future flows where a user must write an app row before RLS can prove ownership should follow the same pattern: one narrowly scoped definer RPC, pinned search path, explicit input validation, and grants only to the role that needs the capability.
+
+## ALEX-002 Verification
+
+- Repo checks passed: `npm run lint && npm run typecheck && npm run test && npm run build`.
+- Local Supabase smoke verification was not run because `supabase status` failed with `No such container: supabase_db_alexandria`, and `supabase db lint --local --schema public` failed to connect to `127.0.0.1:54322` with `connection refused`.
+- SQL parse/lint confirmation is unavailable in this environment: `psql`, `postgres`, `pg_format`, and `pgsanity` are not installed. The committed Vitest suite includes static assertions for the two new migrations' SECURITY DEFINER, pinned search path, grant model, and bootstrap insert contracts, but those are not a substitute for a live Supabase smoke run.
