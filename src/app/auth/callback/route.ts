@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSafeNext } from "../../../lib/auth/safe-next";
+import { ensureProfile } from "../../../lib/profiles/ensure-profile";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 type AuthUser = {
@@ -41,13 +42,18 @@ export async function GET(request: Request) {
     return redirectTo(requestUrl, "/login?error=profile_sync_failed");
   }
 
-  const { error: profileError } = await supabase.rpc("ensure_profile", {
-    p_display_name: getDisplayName(user),
-    p_email: user.email,
-  });
+  const profileResult = await ensureProfile(
+    {
+      displayName: getDisplayName(user),
+      email: user.email,
+    },
+    supabase,
+  );
 
-  if (profileError) {
-    console.error("Profile sync failed.", profileError);
+  if (!profileResult.ok) {
+    console.error("Profile sync failed.", {
+      reason: profileResult.reason,
+    });
     return redirectTo(requestUrl, "/login?error=profile_sync_failed");
   }
 

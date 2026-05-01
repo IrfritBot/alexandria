@@ -29,3 +29,10 @@
 - Added `supabase/validation/alex_001_quality.test.ts` for executable static migration assertions covering the same ALEX-001 schema/RLS contracts when a local database is unavailable, including helper ACL boundaries, revision snapshots, conflict state/result checks, admin memory governance corrections, and active invite uniqueness.
 - Repo checks passed: `npm run lint && npm run typecheck && npm run test && npm run build`.
 - Local DB validation is currently blocked: `psql` is not installed; `supabase status` reports no local DB container (`supabase_db_alexandria`); and `supabase db lint --local --schema public` cannot connect to `127.0.0.1:54322` because the local Postgres port refuses the connection.
+
+## ALEX-002 Auth Foundation
+
+- `public.ensure_profile(p_email text, p_display_name text default null)` exists because first sign-in must create a `profiles` row before the user owns any app row that ordinary RLS can reference. ALEX-001 intentionally has no `profiles` self-insert policy, so this "user writes a row they do not yet own" path goes through a scoped RPC instead of weakening table RLS.
+- `ensure_profile` is `SECURITY DEFINER` so an authenticated user can upsert only their own profile as resolved by `auth.uid()` inside the function. The function pins `search_path = public, pg_temp`, validates email shape, and returns the resolved `profiles` row. A minimal `profiles.email` column is added by the same migration so the auth callback can sync Supabase Auth email to app identity.
+- `ensure_profile` revokes public, anon, service-role, and MCP executor execution before granting execute only to `authenticated`. Route handlers call it through the cookie-backed Supabase client; they do not use `service_role` for profile bootstrap.
+- Future flows where a user must write an app row before RLS can prove ownership should follow the same pattern: one narrowly scoped definer RPC, pinned search path, explicit input validation, and grants only to the role that needs the capability.
