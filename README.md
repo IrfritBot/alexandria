@@ -16,6 +16,16 @@ npm run build
 
 Open `http://localhost:3000` for the minimal home page.
 
+## Supabase Clients
+
+The app has three Supabase client entrypoints:
+
+- `src/lib/supabase/browser.ts` creates the browser auth client for client components.
+- `src/lib/supabase/server.ts` creates the cookie-aware SSR client for route handlers, server actions, and server components.
+- `src/lib/supabase/anon-server.ts` creates the non-auth-bearing anon server client used where no user session is expected.
+
+The old `src/lib/supabase/client.ts` name was intentionally removed because it hid the difference between anon server access and cookie-backed user sessions. Middleware refreshes Supabase Auth cookies on App Router requests.
+
 ## Routes
 
 - `GET /api/health` returns a 200 JSON health payload.

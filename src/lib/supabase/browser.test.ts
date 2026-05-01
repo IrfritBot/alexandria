@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createSupabaseServerClient, hasSupabaseConfig } from "./client";
+import {
+  createSupabaseBrowserClient,
+  hasSupabaseBrowserConfig,
+} from "./browser";
 
 const SUPABASE_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -17,7 +20,7 @@ function clearSupabaseEnv() {
   }
 }
 
-describe("Supabase anon server client", () => {
+describe("Supabase browser client", () => {
   afterEach(() => {
     for (const key of SUPABASE_ENV_KEYS) {
       const originalValue = originalEnv[key];
@@ -30,12 +33,20 @@ describe("Supabase anon server client", () => {
     }
   });
 
-  it("throws a stable error when anon environment variables are missing", () => {
+  it("throws a stable error when browser environment variables are missing", () => {
     clearSupabaseEnv();
 
-    expect(hasSupabaseConfig()).toBe(false);
-    expect(() => createSupabaseServerClient()).toThrow(
+    expect(hasSupabaseBrowserConfig()).toBe(false);
+    expect(() => createSupabaseBrowserClient()).toThrow(
       "Supabase environment variables are not configured.",
     );
+  });
+
+  it("constructs a browser client when environment variables are present", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+
+    expect(hasSupabaseBrowserConfig()).toBe(true);
+    expect(createSupabaseBrowserClient().auth).toBeDefined();
   });
 });
