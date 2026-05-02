@@ -6,21 +6,11 @@ import styles from "./page.module.css";
 export const dynamic = "force-dynamic";
 
 type WorkspaceMembership = {
-  workspaces:
-    | {
-        name: string;
-        slug: string;
-      }
-    | Array<{
-        name: string;
-        slug: string;
-      }>
-    | null;
+  workspaces: {
+    name: string;
+    slug: string;
+  } | null;
 };
-
-function getWorkspace(row: WorkspaceMembership) {
-  return Array.isArray(row.workspaces) ? row.workspaces[0] : row.workspaces;
-}
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
@@ -47,9 +37,10 @@ export default async function Home() {
   const { data: memberships } = await supabase
     .from("workspace_members")
     .select("workspaces(name, slug)")
-    .order("joined_at", { ascending: true });
-  const workspaces = ((memberships ?? []) as WorkspaceMembership[])
-    .map(getWorkspace)
+    .order("joined_at", { ascending: true })
+    .overrideTypes<WorkspaceMembership[], { merge: false }>();
+  const workspaces = (memberships ?? [])
+    .map((membership) => membership.workspaces)
     .filter((workspace): workspace is NonNullable<typeof workspace> =>
       Boolean(workspace),
     );
