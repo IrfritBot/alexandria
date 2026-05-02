@@ -30,6 +30,9 @@ export type CreateWorkspaceResult =
 
 type RpcClient = Pick<SupabaseClient, "rpc">;
 
+const MIN_SLUG_LEN = 3;
+const MAX_SLUG_LEN = 63;
+const MIN_CONTEXT_DESCRIPTION_LEN = 30;
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 function validateWorkspaceInput(
@@ -42,22 +45,26 @@ function validateWorkspaceInput(
   const slug = input.slug.trim();
 
   if (
-    slug.length < 3 ||
-    slug.length > 63 ||
+    slug.length < MIN_SLUG_LEN ||
+    slug.length > MAX_SLUG_LEN ||
     slug !== slug.toLowerCase() ||
     !SLUG_PATTERN.test(slug)
   ) {
     return { ok: false, field: "slug" };
   }
 
-  if (input.contextDescription.trim().length < 30) {
+  if (input.contextDescription.trim().length < MIN_CONTEXT_DESCRIPTION_LEN) {
     return { ok: false, field: "contextDescription" };
   }
 
   return { ok: true };
 }
 
-function getInvalidInputField(message?: string): CreateWorkspaceField {
+function getInvalidInputField(message?: string): CreateWorkspaceField | null {
+  if (message?.includes("invalid_input:name")) {
+    return "name";
+  }
+
   if (message?.includes("invalid_input:slug")) {
     return "slug";
   }
@@ -66,7 +73,7 @@ function getInvalidInputField(message?: string): CreateWorkspaceField {
     return "contextDescription";
   }
 
-  return "name";
+  return null;
 }
 
 function mapRpcError(error: {
@@ -89,10 +96,16 @@ function mapRpcError(error: {
   }
 
   if (error.code === "22023") {
+    const field = getInvalidInputField(error.message);
+
+    if (!field) {
+      return { ok: false, reason: "workspace_creation_failed" };
+    }
+
     return {
       ok: false,
       reason: "invalid_input",
-      field: getInvalidInputField(error.message),
+      field,
     };
   }
 

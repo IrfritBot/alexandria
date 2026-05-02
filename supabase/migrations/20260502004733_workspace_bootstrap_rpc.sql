@@ -39,6 +39,7 @@ begin
       using errcode = '22023';
   end if;
 
+  -- Keep the 3/63 slug bounds in sync with MIN_SLUG_LEN/MAX_SLUG_LEN in create-workspace.ts.
   if v_slug is null
     or v_slug <> lower(v_slug)
     or length(v_slug) < 3
@@ -48,6 +49,7 @@ begin
       using errcode = '22023';
   end if;
 
+  -- Keep the 30-character minimum in sync with MIN_CONTEXT_DESCRIPTION_LEN in create-workspace.ts.
   if v_context_description is null
     or length(v_context_description) < 30 then
     raise exception 'invalid_input:contextDescription'

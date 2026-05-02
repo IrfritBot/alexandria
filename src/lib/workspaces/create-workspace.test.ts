@@ -128,6 +128,21 @@ describe("createWorkspace", () => {
     });
   });
 
+  it("maps unmatched invalid-input RPC failures as generic creation failures", async () => {
+    mockRpc({
+      data: null,
+      error: {
+        code: "22023",
+        message: "invalid input from another constraint",
+      },
+    });
+
+    await expect(createWorkspace(validInput)).resolves.toEqual({
+      ok: false,
+      reason: "workspace_creation_failed",
+    });
+  });
+
   it("defines an atomic workspace/admin bootstrap migration", () => {
     const sql = migrationSql();
 
