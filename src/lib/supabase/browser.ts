@@ -1,20 +1,14 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export function hasSupabaseBrowserConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { getSupabaseAnonEnv, hasSupabaseAnonEnv } from "./env";
 
-  return Boolean(url && anonKey);
+export function hasSupabaseBrowserConfig() {
+  return hasSupabaseAnonEnv();
 }
 
 export function createSupabaseBrowserClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anonKey) {
-    throw new Error("Supabase environment variables are not configured.");
-  }
+  const { url, anonKey } = getSupabaseAnonEnv();
 
   return createBrowserClient(url, anonKey);
 }

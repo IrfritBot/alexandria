@@ -1,9 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createSupabaseAnonServerClient,
   hasSupabaseAnonConfig,
 } from "./anon-server";
+
+vi.mock("server-only", () => ({}));
 
 const SUPABASE_ENV_KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",

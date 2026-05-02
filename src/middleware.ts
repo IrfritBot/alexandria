@@ -1,17 +1,36 @@
+import "server-only";
+
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { getSupabaseAnonEnv } from "./lib/supabase/env";
 
-  if (!url || !anonKey) {
-    throw new Error("Supabase environment variables are not configured.");
+let warnedMissingSupabaseEnv = false;
+
+function warnMissingSupabaseEnv() {
+  if (warnedMissingSupabaseEnv) {
+    return;
+  }
+
+  warnedMissingSupabaseEnv = true;
+  console.warn(
+    "Supabase environment variables are not configured; skipping auth session refresh.",
+  );
+}
+
+export async function middleware(request: NextRequest) {
+  let env: ReturnType<typeof getSupabaseAnonEnv>;
+
+  try {
+    env = getSupabaseAnonEnv();
+  } catch {
+    warnMissingSupabaseEnv();
+    return NextResponse.next({ request });
   }
 
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(url, anonKey, {
+  const supabase = createServerClient(env.url, env.anonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
