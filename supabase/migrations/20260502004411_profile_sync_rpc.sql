@@ -52,6 +52,8 @@ begin
   returning *
   into v_profile;
 
+  -- The conditional upsert WHERE can make RETURNING * produce no row on no-op repeat sign-ins.
+  -- This branch reloads the existing row to preserve idempotent sign-in behavior.
   if v_profile.id is null then
     select *
     into v_profile

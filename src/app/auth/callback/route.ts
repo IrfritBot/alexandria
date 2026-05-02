@@ -1,22 +1,15 @@
+import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { getSafeNext } from "../../../lib/auth/safe-next";
 import { ensureProfile } from "../../../lib/profiles/ensure-profile";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
-type AuthUser = {
-  email?: string | null;
-  user_metadata?: {
-    full_name?: string | null;
-    name?: string | null;
-  } | null;
-};
-
 function redirectTo(requestUrl: URL, path: string) {
   return NextResponse.redirect(new URL(path, requestUrl.origin), 303);
 }
 
-function getDisplayName(user: AuthUser) {
+function getDisplayName(user: User) {
   return user.user_metadata?.full_name ?? user.user_metadata?.name ?? null;
 }
 
@@ -35,7 +28,7 @@ export async function GET(request: Request) {
     return redirectTo(requestUrl, "/login?error=exchange_failed");
   }
 
-  const user = data.session?.user as AuthUser | undefined;
+  const user = data.session?.user;
 
   if (!user?.email) {
     console.error("Profile sync failed: auth callback session had no email.");

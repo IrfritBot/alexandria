@@ -15,6 +15,7 @@ export function getSafeNext(rawNext: string | null): string {
     !next.startsWith("/") ||
     next.includes("//") ||
     next.includes("\\") ||
+    // ":" rejection is intentional per the ALEX-002 plan, including in query strings.
     next.includes(":") ||
     /\s/.test(next) ||
     /^\/(?:api|auth)(?:\/|$)/i.test(next)

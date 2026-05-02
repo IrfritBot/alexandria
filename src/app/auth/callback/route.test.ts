@@ -21,21 +21,29 @@ function expectRedirect(response: Response, location: string) {
 function mockSupabase({
   exchangeError = null,
   rpcError = null,
+  user = {
+    email: "person@example.com",
+    user_metadata: {
+      full_name: "Person Example",
+    },
+  },
 }: {
   exchangeError?: { message: string } | null;
   rpcError?: { message: string } | null;
+  user?: {
+    email?: string | null;
+    user_metadata?: {
+      full_name?: string | null;
+      name?: string | null;
+    };
+  };
 } = {}) {
   const exchangeCodeForSession = vi.fn(async () => ({
     data: exchangeError
       ? { session: null }
       : {
           session: {
-            user: {
-              email: "person@example.com",
-              user_metadata: {
-                full_name: "Person Example",
-              },
-            },
+            user,
           },
         },
     error: exchangeError,
@@ -106,6 +114,33 @@ describe("auth callback route", () => {
       "https://alexandria.test/login?error=profile_sync_failed",
     );
   });
+
+  it.each([null, ""])(
+    "redirects without syncing when the session email is %s",
+    async (email) => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { exchangeCodeForSession, rpc } = mockSupabase({
+        user: {
+          email,
+          user_metadata: {
+            full_name: "Person Example",
+          },
+        },
+      });
+
+      const response = await GET(makeRequest("/auth/callback?code=ok"));
+
+      expect(exchangeCodeForSession).toHaveBeenCalledWith("ok");
+      expect(rpc).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Profile sync failed: auth callback session had no email.",
+      );
+      expectRedirect(
+        response,
+        "https://alexandria.test/login?error=profile_sync_failed",
+      );
+    },
+  );
 
   it("redirects to a valid next path on success", async () => {
     const { rpc } = mockSupabase();
