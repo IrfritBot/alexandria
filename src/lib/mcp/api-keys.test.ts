@@ -9,12 +9,9 @@ import {
   listMcpKeys,
   parseMcpApiKey,
   revokeMcpKey,
-  validateMcpApiKey,
 } from "./api-keys";
 
 vi.mock("server-only", () => ({}));
-
-const VALID_API_KEY = `alex_abcdef12_${"0".repeat(32)}`;
 
 function migrationSql() {
   return readFileSync(
@@ -148,49 +145,6 @@ describe("MCP API keys", () => {
     });
   });
 
-  it("maps a valid presented key only to the verified key workspace", async () => {
-    const rpc = vi.fn(async () => ({
-      data: [
-        {
-          id: "mcp-key-1",
-          workspace_id: "workspace-1",
-        },
-      ],
-      error: null,
-    }));
-
-    await expect(validateMcpApiKey(VALID_API_KEY, { rpc })).resolves.toEqual({
-      ok: true,
-      session: {
-        keyPrefix: "abcdef12",
-        mcpKeyId: "mcp-key-1",
-        workspaceId: "workspace-1",
-      },
-    });
-    expect(rpc).toHaveBeenCalledWith("verify_mcp_api_key", {
-      p_key_prefix: "abcdef12",
-      p_presented_key: VALID_API_KEY,
-    });
-  });
-
-  it("rejects malformed and revoked keys", async () => {
-    const rpc = vi.fn(async () => ({
-      data: [],
-      error: null,
-    }));
-
-    await expect(validateMcpApiKey("alex_bad", { rpc })).resolves.toEqual({
-      ok: false,
-      reason: "malformed",
-    });
-    expect(rpc).not.toHaveBeenCalled();
-
-    await expect(validateMcpApiKey(VALID_API_KEY, { rpc })).resolves.toEqual({
-      ok: false,
-      reason: "invalid",
-    });
-  });
-
   it("defines bcrypt-backed lifecycle RPCs without granting MCP verification to public paths", () => {
     const sql = migrationSql();
     const mcpKeysInsert = sql.match(
@@ -219,5 +173,15 @@ describe("MCP API keys", () => {
     expect(sql).toContain(
       "revoke all on function public.verify_mcp_api_key(text, text) from authenticated",
     );
+  });
+
+  it("keeps UI-facing key-management helpers service-role-free", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/mcp/api-keys.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("../supabase/service-role");
+    expect(source).not.toContain("createSupabaseServiceRoleClient");
   });
 });

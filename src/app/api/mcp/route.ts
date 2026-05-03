@@ -1,4 +1,4 @@
-import { validateMcpBearerToken } from "../../../lib/mcp/api-keys";
+import { validateMcpBearerToken } from "../../../lib/mcp/api-key-validation";
 import {
   saveMcpMemory,
   type MemorySaveField,

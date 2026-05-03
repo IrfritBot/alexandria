@@ -102,5 +102,6 @@ describe("home page", () => {
     expect(html).toContain("Your workspaces");
     expect(html).toContain("Alexandria Team");
     expect(html).toContain("alexandria-team");
+    expect(html).toContain('href="/workspaces/alexandria-team"');
   });
 });

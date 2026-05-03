@@ -56,7 +56,10 @@ export default async function Home() {
           <ul aria-label="Your workspaces">
             {workspaces.map((workspace) => (
               <li key={workspace.slug}>
-                {workspace.name} ({workspace.slug})
+                <Link href={`/workspaces/${workspace.slug}`}>
+                  {workspace.name}
+                </Link>{" "}
+                ({workspace.slug})
               </li>
             ))}
           </ul>

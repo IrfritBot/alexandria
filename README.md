@@ -15,7 +15,9 @@ npm run test
 npm run build
 ```
 
-Open `http://localhost:3000` for the minimal authenticated shell.
+Open `http://localhost:3000` for the authenticated shell. Signed-in users can
+create a workspace, open `/workspaces/[slug]`, browse/search memories, and see
+member/admin boundaries for governance surfaces.
 
 ## Auth Flow
 
@@ -54,6 +56,20 @@ MCP key verification is the exception: `public.verify_mcp_api_key(...)` is calla
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
 - `POST /api/workspaces` creates a workspace through the bootstrap RPC.
 - `GET /workspaces/new` renders the minimal workspace creation form.
+- `GET /workspaces/[slug]` renders the authenticated workspace dashboard.
+- `GET /workspaces/[slug]/memories` browses and full-text searches workspace-scoped memories.
+- `GET /workspaces/[slug]/memories/[memoryId]` renders a read-only memory detail page with tags and recent revisions.
+- `GET /workspaces/[slug]/keys` renders admin-only MCP key list/create/revoke controls.
+- `POST /workspaces/[slug]/keys/create` creates an MCP key through `public.issue_mcp_key(...)` and returns the one-time plaintext value without putting it in the URL.
+- `POST /workspaces/[slug]/keys/[keyId]/revoke` revokes an MCP key through `public.revoke_mcp_key(...)`.
+- `GET /workspaces/[slug]/conflicts` renders the admin-only unresolved conflict queue.
+- `GET /workspaces/[slug]/audit` renders a minimal admin-only read-only audit log shell.
+- `GET /workspaces/[slug]/usage` renders a minimal admin-only read-only usage shell.
+
+Workspace web routes use the cookie-backed Supabase server client and RLS-backed
+membership lookup. They do not import the service-role client; MCP key material
+is issued/revoked through authenticated RPCs that enforce workspace admin
+membership in Postgres.
 
 ## MCP HTTP Contract
 
@@ -102,4 +118,5 @@ Auto-resolution is intentionally narrow: only active, same-kind candidates can b
 - Next.js App Router covers the future web UI, API route handlers, and MCP HTTP entrypoint in one repo.
 - Supabase helper code includes browser, cookie-backed server, service-role, and anon-server clients, with user auth and workspace bootstrap using Supabase Auth plus scoped RPCs.
 - Inngest handles the async `memory/process.requested` worker path for classify/embed/conflict/finalize behavior.
-- No destructive memory CRUD, product UI, secrets, or invented architecture are included in this slice.
+- ALEX-007 adds the minimal web governance shell: authenticated dashboard, memory browse/search/detail, MCP key management, unresolved conflict queue, and read-only audit/usage views.
+- Full invite/member management, conflict resolution actions, and destructive memory CRUD remain follow-up work.
