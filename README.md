@@ -25,11 +25,12 @@ The only redirect helper is `src/lib/auth/safe-next.ts`. It defaults to `/` and 
 
 ## Supabase Clients
 
-The app has three Supabase client entrypoints:
+The app has four Supabase client entrypoints:
 
 - `src/lib/supabase/browser.ts` creates the browser auth client for client components.
 - `src/lib/supabase/server.ts` creates the cookie-aware SSR client for route handlers, server actions, and server components.
 - `src/lib/supabase/anon-server.ts` creates the non-auth-bearing anon server client used where no user session is expected.
+- `src/lib/supabase/mcp-executor.ts` creates the MCP tenant-write client. It sends the anon API key plus a JWT whose role claim is `mcp_session_executor`, so RLS applies to MCP data writes.
 
 The old `src/lib/supabase/client.ts` name was intentionally removed because it hid the difference between anon server access and cookie-backed user sessions. Middleware refreshes Supabase Auth cookies on App Router requests.
 
@@ -42,6 +43,8 @@ First-write tenancy flows use narrowly scoped Postgres `SECURITY DEFINER` RPCs r
 
 Both functions pin `search_path = public, pg_temp`, revoke public execution, and grant execute only to `authenticated`.
 
+MCP key verification is the exception: `public.verify_mcp_api_key(...)` is callable only by `service_role` because it checks bcrypt key hashes. After verification, `memory_save` tenant writes do not use `service_role`; the route calls `public.save_mcp_memory(...)` as `mcp_session_executor`. That invoker function runs in one database transaction, calls `set_mcp_session(workspace_id, mcp_key_id)`, and lets RLS enforce workspace scope for `memories`, `memory_revisions`, normalized `workspace_tags`, `memory_tags`, audit, and usage rows.
+
 ## Routes
 
 - `GET /api/health` returns a 200 JSON health payload.
@@ -51,6 +54,38 @@ Both functions pin `search_path = public, pg_temp`, revoke public execution, and
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
 - `POST /api/workspaces` creates a workspace through the bootstrap RPC.
 - `GET /workspaces/new` renders the minimal workspace creation form.
+
+## MCP HTTP Contract
+
+MCP API keys use `alex_<8-hex-prefix>_<32-hex-secret>`. The prefix is stored for lookup; the full presented key is checked against the stored bcrypt hash and revoked keys are rejected.
+
+`POST /api/mcp` accepts a Bearer key and a `memory_save` body:
+
+```json
+{
+  "method": "memory_save",
+  "params": {
+    "content": "Remember the Friday deployment freeze.",
+    "tags": ["Policy", "release notes"]
+  }
+}
+```
+
+On success it returns `202`:
+
+```json
+{
+  "ok": true,
+  "service": "alexandria",
+  "surface": "mcp",
+  "method": "memory_save",
+  "memory_id": "<uuid>",
+  "status": "processing",
+  "message": "Memory accepted for processing."
+}
+```
+
+The synchronous path trims content, normalizes tags to lowercase slug names, writes a `processing` memory plus initial revision/tag/audit/usage rows, and enqueues the Inngest event `memory/process.requested`.
 
 ## Spec Mapping
 

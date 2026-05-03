@@ -566,7 +566,7 @@ do $$
 declare
   missing_mcp_select_grants text[];
   forbidden_mcp_select_grants text[];
-  missing_mcp_insert_grant boolean;
+  missing_mcp_insert_grants text[];
   forbidden_mcp_mutation_grants text[];
   mistargeted_mcp_policies text[];
 begin
@@ -635,15 +635,27 @@ begin
       forbidden_mcp_select_grants;
   end if;
 
-  select not has_table_privilege(
-    'mcp_session_executor',
-    'public.memories',
-    'INSERT'
+  with allowed_insert_tables(table_name) as (
+    values
+      ('memories'),
+      ('memory_revisions'),
+      ('workspace_tags'),
+      ('memory_tags'),
+      ('audit_log_memory'),
+      ('usage_events')
   )
-  into missing_mcp_insert_grant;
+  select array_agg(table_name order by table_name)
+  into missing_mcp_insert_grants
+  from allowed_insert_tables
+  where not has_table_privilege(
+    'mcp_session_executor',
+    format('public.%I', table_name),
+    'INSERT'
+  );
 
-  if missing_mcp_insert_grant then
-    raise exception 'mcp_session_executor missing minimal MCP INSERT grant on memories';
+  if coalesce(array_length(missing_mcp_insert_grants, 1), 0) > 0 then
+    raise exception 'mcp_session_executor missing minimal MCP INSERT grant on memories / first-write side-effect tables: %',
+      missing_mcp_insert_grants;
   end if;
 
   with all_tables(table_name) as (
@@ -664,6 +676,15 @@ begin
   ),
   privileges(privilege_type) as (
     values ('INSERT'), ('UPDATE'), ('DELETE')
+  ),
+  allowed_mutations(table_name, privilege_type) as (
+    values
+      ('memories', 'INSERT'),
+      ('memory_revisions', 'INSERT'),
+      ('workspace_tags', 'INSERT'),
+      ('memory_tags', 'INSERT'),
+      ('audit_log_memory', 'INSERT'),
+      ('usage_events', 'INSERT')
   )
   select array_agg(
     format('%s:%s', all_tables.table_name, privileges.privilege_type)
@@ -672,10 +693,10 @@ begin
   into forbidden_mcp_mutation_grants
   from all_tables
   cross join privileges
-  where not (
-      all_tables.table_name = 'memories'
-      and privileges.privilege_type = 'INSERT'
-    )
+  left join allowed_mutations
+    on allowed_mutations.table_name = all_tables.table_name
+    and allowed_mutations.privilege_type = privileges.privilege_type
+  where allowed_mutations.table_name is null
     and has_table_privilege(
       'mcp_session_executor',
       format('public.%I', all_tables.table_name),
@@ -695,7 +716,12 @@ begin
       ('memory_revisions', 'memory_revisions_select_mcp_session'),
       ('workspace_tags', 'workspace_tags_select_mcp_session'),
       ('memory_tags', 'memory_tags_select_mcp_session'),
-      ('memories', 'memories_insert_mcp_session')
+      ('memories', 'memories_insert_mcp_session'),
+      ('memory_revisions', 'memory_revisions_insert_mcp_session'),
+      ('workspace_tags', 'workspace_tags_insert_mcp_session'),
+      ('memory_tags', 'memory_tags_insert_mcp_session'),
+      ('audit_log_memory', 'audit_log_memory_insert_mcp_session'),
+      ('usage_events', 'usage_events_insert_mcp_session')
   )
   select array_agg(
     format('%s.%s', expected_mcp_policies.table_name, expected_mcp_policies.policy_name)

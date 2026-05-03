@@ -117,14 +117,23 @@ describe("saveMcpMemory", () => {
     const sql = migrationSql().toLowerCase();
 
     expect(sql).toContain("create or replace function public.save_mcp_memory");
+    expect(sql).toContain("security invoker");
     expect(sql).toContain("perform public.set_mcp_session");
     expect(sql).toContain("insert into public.memories");
     expect(sql).toContain("insert into public.memory_revisions");
+    expect(sql).toContain("insert into public.workspace_tags");
+    expect(sql).toContain("insert into public.memory_tags");
     expect(sql).toContain("insert into public.audit_log_memory");
     expect(sql).toContain("insert into public.usage_events");
     expect(sql).toContain("'processing'");
     expect(sql).toContain("'memory_save_requested'");
     expect(sql).toContain(
+      "grant execute on function public.save_mcp_memory(uuid, uuid, text, jsonb) to mcp_session_executor",
+    );
+    expect(sql).toContain(
+      "revoke all on function public.save_mcp_memory(uuid, uuid, text, jsonb) from service_role",
+    );
+    expect(sql).not.toContain(
       "grant execute on function public.save_mcp_memory(uuid, uuid, text, jsonb) to service_role",
     );
   });

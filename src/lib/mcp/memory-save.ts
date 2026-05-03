@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ValidMcpSession } from "./api-keys";
 import { inngest } from "../inngest/client";
-import { createSupabaseServiceRoleClient } from "../supabase/service-role";
+import { createSupabaseMcpExecutorClient } from "../supabase/mcp-executor";
 
 const MAX_CONTENT_CHARS = 8192;
 const MEMORY_SAVE_MESSAGE = "Memory accepted for processing.";
@@ -171,7 +171,7 @@ export async function saveMcpMemory(
   try {
     const rpcClient =
       dependencies?.rpcClient ??
-      ((createSupabaseServiceRoleClient() as unknown) as RpcClient);
+      ((createSupabaseMcpExecutorClient() as unknown) as RpcClient);
 
     saveResponse = await rpcClient.rpc("save_mcp_memory", {
       p_content: validation.content,
