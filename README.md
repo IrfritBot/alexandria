@@ -45,7 +45,7 @@ Both functions pin `search_path = public, pg_temp`, revoke public execution, and
 ## Routes
 
 - `GET /api/health` returns a 200 JSON health payload.
-- `GET /api/mcp` and `POST /api/mcp` are explicit not-yet-implemented MCP stubs.
+- `GET /api/mcp` is an authenticated not-yet-implemented discovery stub; `POST /api/mcp` accepts the first `memory_save` write path.
 - `GET /api/inngest` and `POST /api/inngest` are compile-safe worker route stubs.
 - `GET /login` renders the magic-link sign-in form.
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
