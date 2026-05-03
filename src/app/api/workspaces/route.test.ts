@@ -24,6 +24,18 @@ function makeRequest(body: unknown) {
     body: JSON.stringify(body),
     headers: {
       "content-type": "application/json",
+      origin: "https://alexandria.test",
+    },
+    method: "POST",
+  });
+}
+
+function makeCrossOriginRequest() {
+  return new Request("https://alexandria.test/api/workspaces", {
+    body: JSON.stringify(validBody),
+    headers: {
+      "content-type": "application/json",
+      origin: "https://example.invalid",
     },
     method: "POST",
   });
@@ -74,6 +86,19 @@ describe("workspaces route", () => {
       error: "unauthenticated",
     });
     expect(response.status).toBe(401);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin workspace mutations before auth work", async () => {
+    const { getUser, rpc } = mockSupabase();
+
+    const response = await POST(makeCrossOriginRequest());
+
+    await expect(response.json()).resolves.toEqual({
+      error: "forbidden",
+    });
+    expect(response.status).toBe(403);
+    expect(getUser).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 

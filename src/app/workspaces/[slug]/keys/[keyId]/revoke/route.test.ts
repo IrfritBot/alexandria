@@ -13,6 +13,21 @@ function makeRequest() {
   return new Request(
     "https://alexandria.test/workspaces/alexandria-team/keys/key-1/revoke",
     {
+      headers: {
+        origin: "https://alexandria.test",
+      },
+      method: "POST",
+    },
+  );
+}
+
+function makeCrossOriginRequest() {
+  return new Request(
+    "https://alexandria.test/workspaces/alexandria-team/keys/key-1/revoke",
+    {
+      headers: {
+        origin: "https://example.invalid",
+      },
       method: "POST",
     },
   );
@@ -143,6 +158,22 @@ describe("revoke MCP key route", () => {
     });
 
     expect(response.status).toBe(403);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin revocation before loading workspace state", async () => {
+    const { rpc } = mockSupabase("admin");
+    vi.mocked(createSupabaseServerClient).mockClear();
+
+    const response = await POST(makeCrossOriginRequest(), {
+      params: Promise.resolve({
+        keyId: "key-1",
+        slug: "alexandria-team",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 });

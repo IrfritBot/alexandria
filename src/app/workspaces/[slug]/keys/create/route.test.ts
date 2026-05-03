@@ -14,6 +14,22 @@ function makeRequest(name: string) {
     "https://alexandria.test/workspaces/alexandria-team/keys/create",
     {
       body: new URLSearchParams({ name }),
+      headers: {
+        origin: "https://alexandria.test",
+      },
+      method: "POST",
+    },
+  );
+}
+
+function makeCrossOriginRequest(name: string) {
+  return new Request(
+    "https://alexandria.test/workspaces/alexandria-team/keys/create",
+    {
+      body: new URLSearchParams({ name }),
+      headers: {
+        origin: "https://example.invalid",
+      },
       method: "POST",
     },
   );
@@ -146,5 +162,18 @@ describe("create MCP key route", () => {
     expect(response.status).toBe(403);
     expect(rpc).not.toHaveBeenCalled();
     await expect(response.text()).resolves.toContain("Admin access required");
+  });
+
+  it("rejects cross-origin key creation before loading workspace state", async () => {
+    const { rpc } = mockSupabase("admin");
+    vi.mocked(createSupabaseServerClient).mockClear();
+
+    const response = await POST(makeCrossOriginRequest("Build bot"), {
+      params: Promise.resolve({ slug: "alexandria-team" }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

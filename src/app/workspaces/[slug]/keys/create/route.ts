@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { issueMcpKey } from "@/lib/mcp/api-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { validateMutationOrigin } from "@/lib/web/post-origin";
 import {
   isWorkspaceAdmin,
   loadWorkspaceContext,
@@ -86,6 +87,12 @@ function createdKeyHtml(input: {
 
 export async function POST(request: Request, context: CreateKeyRouteContext) {
   const { slug } = await context.params;
+  const originCheck = validateMutationOrigin(request);
+
+  if (!originCheck.ok) {
+    return htmlResponse("Forbidden.", 403);
+  }
+
   const supabase = await createSupabaseServerClient();
   const workspaceResult = await loadWorkspaceContext({ slug }, supabase);
 

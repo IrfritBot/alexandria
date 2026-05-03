@@ -7,9 +7,11 @@
   },
   "scripts": {
     "dev": "next dev",
+    "demo:check": "node scripts/demo-check.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "local:mcp-jwt": "node scripts/local-mcp-jwt.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

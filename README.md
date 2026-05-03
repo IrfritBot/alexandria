@@ -9,6 +9,8 @@ This is the Sprint 1 Alexandria app: a hosted, multi-tenant shared team memory s
 ```bash
 npm install
 npm run dev
+npm run local:mcp-jwt
+npm run demo:check
 npm run lint
 npm run typecheck
 npm run test
@@ -18,6 +20,63 @@ npm run build
 Open `http://localhost:3000` for the authenticated shell. Signed-in users can
 create a workspace, open `/workspaces/[slug]`, browse/search memories, and see
 member/admin boundaries for governance surfaces.
+
+## Local MVP Demo Flow
+
+Use this flow for a fresh local demo database.
+
+1. Start Supabase and apply migrations:
+
+```bash
+supabase start
+supabase db reset
+supabase status
+```
+
+2. Create `.env.local` from `.env.example`, then fill the local Supabase values from `supabase status`:
+
+```bash
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
+SUPABASE_MCP_EXECUTOR_JWT=<generated below>
+```
+
+Generate the MCP executor JWT with the local JWT secret from `supabase status`:
+
+```bash
+SUPABASE_JWT_SECRET='<jwt secret>' npm run local:mcp-jwt
+```
+
+Paste that command output into `SUPABASE_MCP_EXECUTOR_JWT`.
+
+3. Run the app and worker in separate terminals:
+
+```bash
+npm run dev
+npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
+```
+
+4. Complete the browser setup:
+
+- Open `http://localhost:3000/login`, enter a demo email, then open the local email from Inbucket at `http://localhost:54324` and follow the magic link.
+- Create a workspace at `http://localhost:3000/workspaces/new`. Demo values: name `Alexandria Demo`, slug `alexandria-demo`, context `Shared demo workspace for Alexandria MVP memory save, processing, search, and governance review.`
+- Open `http://localhost:3000/workspaces/alexandria-demo/keys`, create an MCP key named `MVP demo check`, and keep the one-time plaintext key.
+
+5. Prove the core loop:
+
+```bash
+export ALEXANDRIA_DEMO_MCP_KEY='<one-time key>'
+export ALEXANDRIA_DEMO_WORKSPACE_SLUG=alexandria-demo
+npm run demo:check
+```
+
+`npm run demo:check` verifies health, login rendering, MCP key authentication,
+`memory_save`, processing completion, `memory_search`, and `memory_get`. For
+full signed-in web browse automation, also set `ALEXANDRIA_DEMO_COOKIE` to the
+browser request `Cookie` header for the local app; otherwise the command prints
+the memories URL to open while signed in.
 
 ## Auth Flow
 

@@ -5,6 +5,7 @@ import {
   type CreateWorkspaceField,
 } from "../../../lib/workspaces/create-workspace";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
+import { validateMutationOrigin } from "../../../lib/web/post-origin";
 
 type WorkspaceBody = {
   name: string;
@@ -74,6 +75,12 @@ async function parseWorkspaceBody(
 }
 
 export async function POST(request: Request) {
+  const originCheck = validateMutationOrigin(request);
+
+  if (!originCheck.ok) {
+    return jsonResponse({ error: "forbidden" }, 403);
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
