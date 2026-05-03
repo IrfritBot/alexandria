@@ -2,7 +2,7 @@
 
 Repo path: `/Users/irfrit/projects/alexandria`
 
-This is the Sprint 1A bootstrap skeleton for Alexandria: a hosted, multi-tenant shared team memory app with a future MCP surface. It intentionally includes only the executable shell from the locked spec: Next.js App Router, route-handler API stubs, Supabase wiring, Inngest wiring, and an environment contract.
+This is the Sprint 1 Alexandria app: a hosted, multi-tenant shared team memory service with a Next.js web shell, Supabase-backed tenancy, an MCP `memory_save` path, and an Inngest worker for memory classification, embedding, conflict detection, review routing, audit, and usage accounting.
 
 ## Commands
 
@@ -49,7 +49,7 @@ MCP key verification is the exception: `public.verify_mcp_api_key(...)` is calla
 
 - `GET /api/health` returns a 200 JSON health payload.
 - `GET /api/mcp` is an authenticated not-yet-implemented discovery stub; `POST /api/mcp` accepts the first `memory_save` write path.
-- `GET /api/inngest` and `POST /api/inngest` are compile-safe worker route stubs.
+- `GET /api/inngest`, `POST /api/inngest`, and `PUT /api/inngest` serve the Inngest worker functions.
 - `GET /login` renders the magic-link sign-in form.
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
 - `POST /api/workspaces` creates a workspace through the bootstrap RPC.
@@ -87,9 +87,19 @@ On success it returns `202`:
 
 The synchronous path trims content, normalizes tags to lowercase slug names, writes a `processing` memory plus initial revision/tag/audit/usage rows, and enqueues the Inngest event `memory/process.requested`.
 
+## Memory Worker
+
+`POST /api/mcp` does not call model providers directly. It enqueues `memory/process.requested`, and `src/lib/memory/inngest.ts` serves the `memory-process-v1` Inngest function through `/api/inngest`.
+
+The worker loads the processing memory, classifies kind, creates an embedding, retrieves active same-kind conflict candidates, writes conflict rows, records a revision, updates the memory, and appends audit/usage rows. Basic workspaces use the Anthropic basic classifier model and OpenAI embeddings. Pro workspaces use the Anthropic pro classifier model and Voyage embeddings when configured.
+
+Classifier output with confidence `<= 0.6` is preserved as kind/confidence metadata but routes the memory to `status='conflict'` for admin review and suppresses auto-resolution. Classifier provider failures also route to `status='conflict'` with `kind='unknown'` and failure metadata. Embedder provider failures mark the memory `status='failed'` with inspectable processing metadata.
+
+Auto-resolution is intentionally narrow: only active, same-kind candidates can be auto-resolved. `conflict` status candidates, `unknown` kind candidates, judgment memories, classifier failures, low-confidence classifications, and mixed multi-candidate sets remain unresolved for admin review and do not update `superseded_by_memory_id` on older memories.
+
 ## Spec Mapping
 
 - Next.js App Router covers the future web UI, API route handlers, and MCP HTTP entrypoint in one repo.
 - Supabase helper code includes browser, cookie-backed server, service-role, and anon-server clients, with user auth and workspace bootstrap using Supabase Auth plus scoped RPCs.
-- Inngest structure is present for the future async write pipeline, but no worker behavior is implemented yet.
-- No memory CRUD, product UI, secrets, or invented architecture are included in this bootstrap.
+- Inngest handles the async `memory/process.requested` worker path for classify/embed/conflict/finalize behavior.
+- No destructive memory CRUD, product UI, secrets, or invented architecture are included in this slice.

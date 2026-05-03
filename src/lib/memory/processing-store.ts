@@ -133,6 +133,7 @@ function mapCandidateRow(row: Record<string, unknown>): ConflictCandidate | null
     id: row.id,
     kind: normalizeKind(row.kind),
     metadata: normalizeMetadata(row.metadata),
+    status: normalizeStatus(row.status),
   };
 }
 
@@ -284,14 +285,15 @@ export function createSupabaseMemoryProcessingDatabase(
     },
 
     async listConflictCandidates(input) {
-      const kinds = input.kind === "unknown" ? ["unknown"] : [input.kind, "unknown"];
       const { data, error } = await client
         .from("memories")
-        .select("id, author_profile_id, kind, content, metadata, embedding, created_at")
+        .select(
+          "id, author_profile_id, kind, status, content, metadata, embedding, created_at",
+        )
         .eq("workspace_id", input.workspaceId)
         .neq("id", input.memoryId)
-        .in("kind", kinds)
-        .in("status", ["active", "conflict"])
+        .eq("kind", input.kind)
+        .eq("status", "active")
         .is("deleted_at", null)
         .is("superseded_by_memory_id", null)
         .not("embedding", "is", null)

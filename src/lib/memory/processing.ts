@@ -41,6 +41,7 @@ export type ConflictCandidate = {
   id: string;
   kind: MemoryKind;
   metadata: ProcessingMetadata;
+  status: MemoryStatus;
 };
 
 export type InsertConflictInput = {
@@ -151,6 +152,7 @@ type ConflictPlan = {
 
 const WORKER_VERSION = "memory-worker-v1";
 const DEFAULT_CANDIDATE_LIMIT = 200;
+const LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.6;
 
 function sanitizeError(error: unknown) {
   const message =
@@ -284,6 +286,7 @@ function chooseWinner(
 }
 
 export function planConflicts(input: {
+  allowAutoResolution?: boolean;
   candidates: ConflictCandidate[];
   embedding: number[];
   kind: MemoryKind;
@@ -307,6 +310,19 @@ export function planConflicts(input: {
       input.memory.workspace.conflictThresholds.duplicate
         ? "duplicate"
         : "conflict";
+    const canAutoResolveCandidate =
+      input.allowAutoResolution !== false &&
+      input.kind !== "unknown" &&
+      scoredCandidate.candidate.kind === input.kind &&
+      scoredCandidate.candidate.status === "active";
+
+    if (!canAutoResolveCandidate) {
+      return {
+        ...scoredCandidate,
+        band,
+        status: "unresolved",
+      };
+    }
 
     if (band === "duplicate" && (input.kind === "policy" || input.kind === "fact")) {
       return {
@@ -342,6 +358,22 @@ export function planConflicts(input: {
   });
 }
 
+function requiresClassifierReview(classifierResult: ClassifierResult | null) {
+  return (
+    classifierResult !== null &&
+    classifierResult.confidence <= LOW_CONFIDENCE_REVIEW_THRESHOLD
+  );
+}
+
+function suppressAutoResolution(plan: ConflictPlan): ConflictPlan {
+  return {
+    band: plan.band,
+    candidate: plan.candidate,
+    similarity: plan.similarity,
+    status: "unresolved",
+  };
+}
+
 function processingMetadata(input: {
   classifierFailure: ProviderFailure | null;
   classifierResult: ClassifierResult | null;
@@ -371,6 +403,8 @@ function processingMetadata(input: {
             model: input.classifierResult?.model ?? null,
             prompt_version: CLASSIFIER_PROMPT_VERSION,
             provider: input.classifierResult?.provider ?? null,
+            review_required: requiresClassifierReview(input.classifierResult),
+            review_threshold: LOW_CONFIDENCE_REVIEW_THRESHOLD,
             status: "ok",
           },
       completed_at: input.completedAt,
@@ -582,13 +616,27 @@ export async function processMemory(
     memoryId: memory.id,
     workspaceId: memory.workspaceId,
   });
-  const conflictPlans = planConflicts({
+  const classifierNeedsReview = requiresClassifierReview(classifierResult);
+  const rawConflictPlans = planConflicts({
+    allowAutoResolution: !classifierNeedsReview,
     candidates,
     embedding: embeddingResult.embedding,
     kind,
     memory,
   });
+  const hasUnresolvedConflict = rawConflictPlans.some(
+    (plan) => plan.status === "unresolved",
+  );
+  const status: MemoryStatus =
+    hasUnresolvedConflict || classifierFailure !== null || classifierNeedsReview
+      ? "conflict"
+      : "active";
+  const conflictPlans =
+    status === "active"
+      ? rawConflictPlans
+      : rawConflictPlans.map(suppressAutoResolution);
   let supersededByMemoryId: string | null = memory.supersededByMemoryId;
+  const insertedConflicts: { conflictId: string; plan: ConflictPlan }[] = [];
 
   for (const plan of conflictPlans) {
     const conflict = await dependencies.database.insertConflict({
@@ -601,6 +649,7 @@ export async function processMemory(
       winnerMemoryId: plan.winnerMemoryId,
       workspaceId: memory.workspaceId,
     });
+    insertedConflicts.push({ conflictId: conflict.id, plan });
 
     await dependencies.database.insertAuditLog({
       action: "conflict_detected",
@@ -615,41 +664,40 @@ export async function processMemory(
       targetMemoryId: memory.id,
       workspaceId: memory.workspaceId,
     });
+  }
 
-    if (plan.status === "auto_resolved" && plan.winnerMemoryId) {
-      const loserMemoryId =
-        plan.winnerMemoryId === memory.id ? plan.candidate.id : memory.id;
+  if (status === "active") {
+    for (const { conflictId, plan } of insertedConflicts) {
+      if (plan.status === "auto_resolved" && plan.winnerMemoryId) {
+        const loserMemoryId =
+          plan.winnerMemoryId === memory.id ? plan.candidate.id : memory.id;
 
-      if (loserMemoryId === memory.id) {
-        supersededByMemoryId = plan.winnerMemoryId;
-      } else {
-        await dependencies.database.updateMemorySupersededBy({
-          memoryId: loserMemoryId,
-          supersededByMemoryId: plan.winnerMemoryId,
+        if (loserMemoryId === memory.id) {
+          supersededByMemoryId = plan.winnerMemoryId;
+        } else {
+          await dependencies.database.updateMemorySupersededBy({
+            memoryId: loserMemoryId,
+            supersededByMemoryId: plan.winnerMemoryId,
+            workspaceId: memory.workspaceId,
+          });
+        }
+
+        await dependencies.database.insertAuditLog({
+          action: "conflict_resolved",
+          actorMcpKeyId: input.mcpKeyId,
+          metadata: {
+            resolution: plan.resolution,
+            resolution_strategy: plan.resolutionStrategy,
+            winner_memory_id: plan.winnerMemoryId,
+            worker_version: WORKER_VERSION,
+          },
+          targetConflictId: conflictId,
           workspaceId: memory.workspaceId,
         });
       }
-
-      await dependencies.database.insertAuditLog({
-        action: "conflict_resolved",
-        actorMcpKeyId: input.mcpKeyId,
-        metadata: {
-          resolution: plan.resolution,
-          resolution_strategy: plan.resolutionStrategy,
-          winner_memory_id: plan.winnerMemoryId,
-          worker_version: WORKER_VERSION,
-        },
-        targetConflictId: conflict.id,
-        workspaceId: memory.workspaceId,
-      });
     }
   }
 
-  const hasUnresolvedConflict = conflictPlans.some(
-    (plan) => plan.status === "unresolved",
-  );
-  const status: MemoryStatus =
-    hasUnresolvedConflict || classifierFailure ? "conflict" : "active";
   const metadata = processingMetadata({
     classifierFailure,
     classifierResult,

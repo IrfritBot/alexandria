@@ -75,6 +75,7 @@ function candidate(overrides: Partial<ConflictCandidate> = {}): ConflictCandidat
     id: "memory-old",
     kind: "fact",
     metadata: { source: "mcp" },
+    status: "active",
     ...overrides,
   };
 }
@@ -210,6 +211,175 @@ describe("processMemory", () => {
     expect(calls.audits.map((audit) => audit.action)).toEqual([
       "conflict_detected",
       "conflict_resolved",
+      "memory_processed",
+    ]);
+  });
+
+  it("routes classifier confidence at 0.6 to review and suppresses auto-resolution", async () => {
+    const { calls, database } = fakeDatabase(memory(), [
+      candidate({ embedding: [0.86, 0.51, 0] }),
+    ]);
+
+    await expect(
+      processMemory(
+        {
+          mcpKeyId: "mcp-key-1",
+          memoryId: "memory-new",
+          workspaceId: "workspace-1",
+        },
+        {
+          classifier: async () => classifierResult("fact", 0.6),
+          database,
+          embedder: async () => embeddingResult([1, 0, 0]),
+          now: fixedNow,
+        },
+      ),
+    ).resolves.toEqual({
+      memoryId: "memory-new",
+      ok: true,
+      status: "conflict",
+    });
+
+    expect(calls.conflicts).toEqual([
+      expect.objectContaining({
+        resolution: undefined,
+        resolutionStrategy: undefined,
+        status: "unresolved",
+        targetMemoryId: "memory-old",
+        winnerMemoryId: undefined,
+      }),
+    ]);
+    expect(calls.superseded).toEqual([]);
+    expect(calls.updates[0]).toMatchObject({
+      kind: "fact",
+      kindConfidence: 0.6,
+      status: "conflict",
+      supersededByMemoryId: null,
+    });
+    expect(calls.updates[0].metadata).toMatchObject({
+      processing: {
+        classifier: {
+          confidence: 0.6,
+          kind: "fact",
+          review_required: true,
+        },
+      },
+    });
+  });
+
+  it("keeps conflict-status candidates unresolved and unsuperseded if retained for review", async () => {
+    const { calls, database } = fakeDatabase(memory(), [
+      candidate({ embedding: [0.9, 0.1, 0], status: "conflict" }),
+    ]);
+
+    await processMemory(
+      {
+        mcpKeyId: "mcp-key-1",
+        memoryId: "memory-new",
+        workspaceId: "workspace-1",
+      },
+      {
+        classifier: async () => classifierResult("fact"),
+        database,
+        embedder: async () => embeddingResult([1, 0, 0]),
+        now: fixedNow,
+      },
+    );
+
+    expect(calls.conflicts).toEqual([
+      expect.objectContaining({
+        status: "unresolved",
+        targetMemoryId: "memory-old",
+        winnerMemoryId: undefined,
+      }),
+    ]);
+    expect(calls.superseded).toEqual([]);
+    expect(calls.updates[0]).toMatchObject({
+      status: "conflict",
+      supersededByMemoryId: null,
+    });
+  });
+
+  it("keeps unknown-kind candidates unresolved and unsuperseded if retained for review", async () => {
+    const { calls, database } = fakeDatabase(memory(), [
+      candidate({ embedding: [0.9, 0.1, 0], kind: "unknown" }),
+    ]);
+
+    await processMemory(
+      {
+        mcpKeyId: "mcp-key-1",
+        memoryId: "memory-new",
+        workspaceId: "workspace-1",
+      },
+      {
+        classifier: async () => classifierResult("fact"),
+        database,
+        embedder: async () => embeddingResult([1, 0, 0]),
+        now: fixedNow,
+      },
+    );
+
+    expect(calls.conflicts).toEqual([
+      expect.objectContaining({
+        status: "unresolved",
+        targetMemoryId: "memory-old",
+        winnerMemoryId: undefined,
+      }),
+    ]);
+    expect(calls.superseded).toEqual([]);
+    expect(calls.updates[0]).toMatchObject({
+      kind: "fact",
+      status: "conflict",
+      supersededByMemoryId: null,
+    });
+  });
+
+  it("does not supersede older memories for mixed multi-candidate review", async () => {
+    const { calls, database } = fakeDatabase(memory(), [
+      candidate({
+        embedding: [0.91, 0.41, 0],
+        id: "memory-auto-resolvable",
+      }),
+      candidate({
+        embedding: [0.9, 0.44, 0],
+        id: "memory-review-needed",
+      }),
+    ]);
+
+    await processMemory(
+      {
+        mcpKeyId: "mcp-key-1",
+        memoryId: "memory-new",
+        workspaceId: "workspace-1",
+      },
+      {
+        classifier: async () => classifierResult("fact"),
+        database,
+        embedder: async () => embeddingResult([1, 0, 0]),
+        now: fixedNow,
+      },
+    );
+
+    expect(calls.conflicts).toEqual([
+      expect.objectContaining({
+        status: "unresolved",
+        targetMemoryId: "memory-auto-resolvable",
+        winnerMemoryId: undefined,
+      }),
+      expect.objectContaining({
+        status: "unresolved",
+        targetMemoryId: "memory-review-needed",
+        winnerMemoryId: undefined,
+      }),
+    ]);
+    expect(calls.superseded).toEqual([]);
+    expect(calls.updates[0]).toMatchObject({
+      status: "conflict",
+      supersededByMemoryId: null,
+    });
+    expect(calls.audits.map((audit) => audit.action)).toEqual([
+      "conflict_detected",
+      "conflict_detected",
       "memory_processed",
     ]);
   });
