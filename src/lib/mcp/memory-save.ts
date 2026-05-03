@@ -59,15 +59,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeTag(tag: string) {
+export function normalizeMcpTag(tag: string) {
   return tag
     .trim()
     .replace(/^#+/, "")
     .toLowerCase()
     .replace(/[\s_]+/g, "-")
-    .replace(/[^a-z0-9:-]/g, "")
+    .replace(/[^a-z0-9:/-]/g, "")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/^[-/]+|[-/]+$/g, "");
 }
 
 export function validateMemorySavePayload(
@@ -105,7 +105,7 @@ export function validateMemorySavePayload(
 
   const seenTags = new Set<string>();
   const tags = payload.tags.flatMap((tag) => {
-    const normalizedTag = normalizeTag(tag);
+    const normalizedTag = normalizeMcpTag(tag);
 
     if (!normalizedTag || seenTags.has(normalizedTag)) {
       return [];

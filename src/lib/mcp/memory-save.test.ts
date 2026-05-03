@@ -26,12 +26,18 @@ describe("validateMemorySavePayload", () => {
     expect(
       validateMemorySavePayload({
         content: "  Remember the Friday deploy freeze.  ",
-        tags: [" Product Updates ", "#Policy", "product_updates", " "],
+        tags: [
+          " Product Updates ",
+          "#Policy",
+          "product_updates",
+          "client/Ashley Stambouli/",
+          " ",
+        ],
       }),
     ).toEqual({
       ok: true,
       content: "Remember the Friday deploy freeze.",
-      tags: ["product-updates", "policy"],
+      tags: ["product-updates", "policy", "client/ashley-stambouli"],
     });
   });
 

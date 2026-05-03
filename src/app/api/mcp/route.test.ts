@@ -4,6 +4,13 @@ import { GET, POST } from "./route";
 import { inngest } from "../../../lib/inngest/client";
 import { createSupabaseMcpExecutorClient } from "../../../lib/supabase/mcp-executor";
 import { createSupabaseServiceRoleClient } from "../../../lib/supabase/service-role";
+import {
+  MCP_TOOLS,
+  MEMORY_GET_DESCRIPTION,
+  MEMORY_RECALL_RECENT_DESCRIPTION,
+  MEMORY_SAVE_DESCRIPTION,
+  MEMORY_SEARCH_DESCRIPTION,
+} from "../../../lib/mcp/tool-descriptions";
 
 vi.mock("server-only", () => ({}));
 
@@ -21,14 +28,6 @@ vi.mock("../../../lib/inngest/client", () => ({
   },
 }));
 
-const getNotImplementedPayload = {
-  ok: false,
-  service: "alexandria",
-  surface: "mcp",
-  status: "not_implemented",
-  message: "MCP GET discovery is not implemented yet.",
-};
-
 const unsupportedPayload = {
   ok: false,
   service: "alexandria",
@@ -45,6 +44,8 @@ const unauthorizedPayload = {
 };
 
 const validApiKey = `alex_abcdef12_${"0".repeat(32)}`;
+const memoryId = "11111111-1111-4111-8111-111111111111";
+const authorProfileId = "22222222-2222-4222-8222-222222222222";
 
 const validMemorySaveCall = {
   method: "memory_save",
@@ -71,7 +72,46 @@ function makeRequest(apiKey: string | null = validApiKey, body?: unknown) {
   });
 }
 
+function makeGetRequest(apiKey: string | null = validApiKey) {
+  const headers = new Headers();
+
+  if (apiKey) {
+    headers.set("authorization", `Bearer ${apiKey}`);
+  }
+
+  return new Request("https://alexandria.test/api/mcp", {
+    headers,
+    method: "GET",
+  });
+}
+
 function mockMcpRpc({
+  getData = [
+    {
+      author_label: "MCP key",
+      content: "Ashley Stambouli uses Shopify.",
+      created_at: "2026-05-03T12:05:00.000Z",
+      kind: "fact",
+      memory_id: memoryId,
+      source: "mcp",
+      source_client: null,
+      superseded_by_memory_id: null,
+      tags: ["client/ashley-stambouli"],
+      updated_at: "2026-05-03T12:06:00.000Z",
+    },
+  ],
+  recallData = [
+    {
+      author_label: "MCP key",
+      content: "The deployment freeze starts Friday.",
+      created_at: "2026-05-03T12:00:00.000Z",
+      kind: "policy",
+      memory_id: memoryId,
+      source: "mcp",
+      source_client: "Claude Desktop",
+      tags: ["policy"],
+    },
+  ],
   saveData = [
     {
       memory_id: "memory-1",
@@ -79,6 +119,20 @@ function mockMcpRpc({
     },
   ],
   saveError = null,
+  searchData = [
+    {
+      author_label: "MCP key",
+      content: "Ashley Stambouli uses Shopify.",
+      created_at: "2026-05-03T12:00:00.000Z",
+      kind: "fact",
+      memory_id: memoryId,
+      relevance_score: 0.88,
+      source: "mcp",
+      source_client: "Claude Desktop",
+      tags: ["client/ashley-stambouli"],
+      total_count: 1,
+    },
+  ],
   verifyData = [
     {
       id: "mcp-key-1",
@@ -86,8 +140,11 @@ function mockMcpRpc({
     },
   ],
 }: {
+  getData?: unknown[];
+  recallData?: unknown[];
   saveData?: unknown[];
   saveError?: { code?: string; message?: string } | null;
+  searchData?: unknown[];
   verifyData?: unknown[];
 } = {}) {
   const verifyRpc = vi.fn(async (functionName: string) => {
@@ -105,11 +162,32 @@ function mockMcpRpc({
       },
     };
   });
-  const saveRpc = vi.fn(async (functionName: string) => {
+  const executorRpc = vi.fn(async (functionName: string) => {
     if (functionName === "save_mcp_memory") {
       return {
         data: saveData,
         error: saveError,
+      };
+    }
+
+    if (functionName === "search_mcp_memories") {
+      return {
+        data: searchData,
+        error: null,
+      };
+    }
+
+    if (functionName === "recall_recent_mcp_memories") {
+      return {
+        data: recallData,
+        error: null,
+      };
+    }
+
+    if (functionName === "get_mcp_memory") {
+      return {
+        data: getData,
+        error: null,
       };
     }
 
@@ -125,15 +203,10 @@ function mockMcpRpc({
     rpc: verifyRpc,
   } as never);
   vi.mocked(createSupabaseMcpExecutorClient).mockReturnValue({
-    rpc: saveRpc,
+    rpc: executorRpc,
   } as never);
 
-  return { saveRpc, verifyRpc };
-}
-
-async function expectNotImplementedResponse(response: Response) {
-  await expect(response.json()).resolves.toEqual(getNotImplementedPayload);
-  expect(response.status).toBe(501);
+  return { executorRpc, verifyRpc };
 }
 
 async function expectUnauthorizedResponse(response: Response) {
@@ -147,14 +220,54 @@ describe("mcp route", () => {
     vi.clearAllMocks();
   });
 
-  it("returns the stable 501 contract for authenticated GET", async () => {
+  it("returns the locked v1 tool catalog for authenticated GET", async () => {
     mockMcpRpc();
 
-    await expectNotImplementedResponse(await GET(makeRequest()));
+    const response = await GET(makeGetRequest());
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "alexandria",
+      surface: "mcp",
+      tools: MCP_TOOLS,
+    });
+    expect(response.status).toBe(200);
+    expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
+      "memory_save",
+      "memory_search",
+      "memory_recall_recent",
+      "memory_get",
+    ]);
+    expect(MCP_TOOLS[0]?.description).toBe(MEMORY_SAVE_DESCRIPTION);
+    expect(MCP_TOOLS[1]?.description).toBe(MEMORY_SEARCH_DESCRIPTION);
+    expect(MCP_TOOLS[2]?.description).toBe(MEMORY_RECALL_RECENT_DESCRIPTION);
+    expect(MCP_TOOLS[3]?.description).toBe(MEMORY_GET_DESCRIPTION);
+  });
+
+  it("returns the same tool catalog through tools/list", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        method: "tools/list",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "alexandria",
+      surface: "mcp",
+      tools: MCP_TOOLS,
+    });
+    expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
+      p_key_prefix: "abcdef12",
+      p_presented_key: validApiKey,
+    });
+    expect(executorRpc).not.toHaveBeenCalled();
   });
 
   it("saves a memory, writes through the RPC, and enqueues processing", async () => {
-    const { saveRpc, verifyRpc } = mockMcpRpc();
+    const { executorRpc, verifyRpc } = mockMcpRpc();
 
     const response = await POST(
       makeRequest(validApiKey, {
@@ -184,7 +297,7 @@ describe("mcp route", () => {
       "save_mcp_memory",
       expect.anything(),
     );
-    expect(saveRpc).toHaveBeenCalledWith("save_mcp_memory", {
+    expect(executorRpc).toHaveBeenCalledWith("save_mcp_memory", {
       p_content: "## Decision\nShip the smaller first pass.",
       p_mcp_key_id: "mcp-key-1",
       p_tags: ["product-updates", "policy"],
@@ -202,7 +315,7 @@ describe("mcp route", () => {
   });
 
   it("keeps the memory save scoped to the validated session workspace", async () => {
-    const { saveRpc } = mockMcpRpc();
+    const { executorRpc } = mockMcpRpc();
 
     const response = await POST(
       makeRequest(validApiKey, {
@@ -216,7 +329,7 @@ describe("mcp route", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(saveRpc).toHaveBeenCalledWith("save_mcp_memory", {
+    expect(executorRpc).toHaveBeenCalledWith("save_mcp_memory", {
       p_content: "Caller supplied workspace ids are ignored.",
       p_mcp_key_id: "mcp-key-1",
       p_tags: [],
@@ -225,7 +338,7 @@ describe("mcp route", () => {
   });
 
   it("accepts the minimal tools/call shape for memory_save", async () => {
-    const { saveRpc } = mockMcpRpc();
+    const { executorRpc } = mockMcpRpc();
 
     const response = await POST(
       makeRequest(validApiKey, {
@@ -240,7 +353,7 @@ describe("mcp route", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(saveRpc).toHaveBeenCalledWith("save_mcp_memory", {
+    expect(executorRpc).toHaveBeenCalledWith("save_mcp_memory", {
       p_content: "Save through a tools/call envelope.",
       p_mcp_key_id: "mcp-key-1",
       p_tags: [],
@@ -248,12 +361,164 @@ describe("mcp route", () => {
     });
   });
 
-  it("returns 501 for unsupported authenticated MCP methods", async () => {
-    const { saveRpc, verifyRpc } = mockMcpRpc();
+  it("dispatches memory_search through the validated MCP session", async () => {
+    const { executorRpc } = mockMcpRpc();
 
     const response = await POST(
       makeRequest(validApiKey, {
-        method: "tools/list",
+        method: "tools/call",
+        params: {
+          arguments: {
+            kind: "fact",
+            limit: 500,
+            query: "Ashley Stambouli Shopify",
+            tags: [" Client/Ashley Stambouli "],
+          },
+          name: "memory_search",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "alexandria",
+      surface: "mcp",
+      method: "memory_search",
+      memories: [
+        {
+          author_label: "MCP key",
+          content: "Ashley Stambouli uses Shopify.",
+          created_at: "2026-05-03T12:00:00.000Z",
+          kind: "fact",
+          memory_id: memoryId,
+          relevance_score: 0.88,
+          source: "mcp",
+          source_client: "Claude Desktop",
+          tags: ["client/ashley-stambouli"],
+        },
+      ],
+      total: 1,
+    });
+    expect(executorRpc).toHaveBeenCalledWith("search_mcp_memories", {
+      p_kind: "fact",
+      p_limit: 50,
+      p_mcp_key_id: "mcp-key-1",
+      p_query: "Ashley Stambouli Shopify",
+      p_tags: ["client/ashley-stambouli"],
+      p_workspace_id: "workspace-1",
+    });
+  });
+
+  it("dispatches memory_recall_recent with workspace and author filters", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        method: "memory_recall_recent",
+        params: {
+          author_profile_id: authorProfileId,
+          limit: 2,
+          since: "2026-05-01T00:00:00.000Z",
+          workspace_id: "workspace-other",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "alexandria",
+      surface: "mcp",
+      method: "memory_recall_recent",
+      memories: [
+        {
+          author_label: "MCP key",
+          content: "The deployment freeze starts Friday.",
+          created_at: "2026-05-03T12:00:00.000Z",
+          kind: "policy",
+          memory_id: memoryId,
+          source: "mcp",
+          source_client: "Claude Desktop",
+          tags: ["policy"],
+        },
+      ],
+    });
+    expect(executorRpc).toHaveBeenCalledWith("recall_recent_mcp_memories", {
+      p_author_profile_id: authorProfileId,
+      p_limit: 2,
+      p_mcp_key_id: "mcp-key-1",
+      p_since: "2026-05-01T00:00:00.000Z",
+      p_workspace_id: "workspace-1",
+    });
+  });
+
+  it("dispatches memory_get and returns provenance", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        method: "memory_get",
+        params: {
+          memory_id: memoryId,
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "alexandria",
+      surface: "mcp",
+      method: "memory_get",
+      author_label: "MCP key",
+      content: "Ashley Stambouli uses Shopify.",
+      created_at: "2026-05-03T12:05:00.000Z",
+      kind: "fact",
+      memory_id: memoryId,
+      source: "mcp",
+      source_client: null,
+      superseded_by_memory_id: null,
+      tags: ["client/ashley-stambouli"],
+      updated_at: "2026-05-03T12:06:00.000Z",
+    });
+    expect(executorRpc).toHaveBeenCalledWith("get_mcp_memory", {
+      p_mcp_key_id: "mcp-key-1",
+      p_memory_id: memoryId,
+      p_workspace_id: "workspace-1",
+    });
+  });
+
+  it("rejects cross-workspace memory_get access as not found", async () => {
+    const { executorRpc } = mockMcpRpc({ getData: [] });
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        method: "memory_get",
+        params: {
+          memory_id: memoryId,
+          workspace_id: "workspace-other",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      service: "alexandria",
+      surface: "mcp",
+      error: "memory_not_found",
+    });
+    expect(response.status).toBe(404);
+    expect(executorRpc).toHaveBeenCalledWith("get_mcp_memory", {
+      p_mcp_key_id: "mcp-key-1",
+      p_memory_id: memoryId,
+      p_workspace_id: "workspace-1",
+    });
+  });
+
+  it("returns 501 for unsupported authenticated MCP methods", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        method: "memory_delete",
       }),
     );
 
@@ -263,7 +528,7 @@ describe("mcp route", () => {
       p_key_prefix: "abcdef12",
       p_presented_key: validApiKey,
     });
-    expect(saveRpc).not.toHaveBeenCalled();
+    expect(executorRpc).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -309,8 +574,36 @@ describe("mcp route", () => {
       },
       "tags",
     ],
+    [
+      "missing search query",
+      {
+        method: "memory_search",
+        params: {},
+      },
+      "query",
+    ],
+    [
+      "bad recall since",
+      {
+        method: "memory_recall_recent",
+        params: {
+          since: "not-a-date",
+        },
+      },
+      "since",
+    ],
+    [
+      "bad get id",
+      {
+        method: "memory_get",
+        params: {
+          memory_id: "memory-1",
+        },
+      },
+      "memory_id",
+    ],
   ])("returns 400 for %s", async (_caseName, body, field) => {
-    const { saveRpc, verifyRpc } = mockMcpRpc();
+    const { executorRpc, verifyRpc } = mockMcpRpc();
 
     const response = await POST(makeRequest(validApiKey, body));
 
@@ -323,7 +616,7 @@ describe("mcp route", () => {
     });
     expect(response.status).toBe(400);
     expect(verifyRpc).toHaveBeenCalledTimes(1);
-    expect(saveRpc).not.toHaveBeenCalled();
+    expect(executorRpc).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
   });
 
@@ -335,11 +628,11 @@ describe("mcp route", () => {
   });
 
   it("rejects invalid or revoked keys", async () => {
-    const { saveRpc } = mockMcpRpc({ verifyData: [] });
+    const { executorRpc } = mockMcpRpc({ verifyData: [] });
 
     await expectUnauthorizedResponse(
       await POST(makeRequest(validApiKey, validMemorySaveCall)),
     );
-    expect(saveRpc).not.toHaveBeenCalled();
+    expect(executorRpc).not.toHaveBeenCalled();
   });
 });

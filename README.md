@@ -2,7 +2,7 @@
 
 Repo path: `/Users/irfrit/projects/alexandria`
 
-This is the Sprint 1 Alexandria app: a hosted, multi-tenant shared team memory service with a Next.js web shell, Supabase-backed tenancy, an MCP `memory_save` path, and an Inngest worker for memory classification, embedding, conflict detection, review routing, audit, and usage accounting.
+This is the Sprint 1 Alexandria app: a hosted, multi-tenant shared team memory service with a Next.js web shell, Supabase-backed tenancy, the v1 MCP memory tool surface, and an Inngest worker for memory classification, embedding, conflict detection, review routing, audit, and usage accounting.
 
 ## Commands
 
@@ -30,7 +30,7 @@ The app has four Supabase client entrypoints:
 - `src/lib/supabase/browser.ts` creates the browser auth client for client components.
 - `src/lib/supabase/server.ts` creates the cookie-aware SSR client for route handlers, server actions, and server components.
 - `src/lib/supabase/anon-server.ts` creates the non-auth-bearing anon server client used where no user session is expected.
-- `src/lib/supabase/mcp-executor.ts` creates the MCP tenant-write client. It sends the anon API key plus a JWT whose role claim is `mcp_session_executor`, so RLS applies to MCP data writes.
+- `src/lib/supabase/mcp-executor.ts` creates the MCP tenant-data client. It sends the anon API key plus a JWT whose role claim is `mcp_session_executor`, so RLS applies to MCP memory reads and writes.
 
 The old `src/lib/supabase/client.ts` name was intentionally removed because it hid the difference between anon server access and cookie-backed user sessions. Middleware refreshes Supabase Auth cookies on App Router requests.
 
@@ -43,12 +43,12 @@ First-write tenancy flows use narrowly scoped Postgres `SECURITY DEFINER` RPCs r
 
 Both functions pin `search_path = public, pg_temp`, revoke public execution, and grant execute only to `authenticated`.
 
-MCP key verification is the exception: `public.verify_mcp_api_key(...)` is callable only by `service_role` because it checks bcrypt key hashes. After verification, `memory_save` tenant writes do not use `service_role`; the route calls `public.save_mcp_memory(...)` as `mcp_session_executor`. That invoker function runs in one database transaction, calls `set_mcp_session(workspace_id, mcp_key_id)`, and lets RLS enforce workspace scope for `memories`, `memory_revisions`, normalized `workspace_tags`, `memory_tags`, audit, and usage rows.
+MCP key verification is the exception: `public.verify_mcp_api_key(...)` is callable only by `service_role` because it checks bcrypt key hashes. After verification, MCP tenant reads and writes do not use `service_role`; the route calls invoker RPCs as `mcp_session_executor`. Those functions call `set_mcp_session(workspace_id, mcp_key_id)` and let RLS enforce workspace scope for `memories`, `memory_revisions`, normalized `workspace_tags`, `memory_tags`, audit, and usage rows.
 
 ## Routes
 
 - `GET /api/health` returns a 200 JSON health payload.
-- `GET /api/mcp` is an authenticated not-yet-implemented discovery stub; `POST /api/mcp` accepts the first `memory_save` write path.
+- `GET /api/mcp` and `POST /api/mcp` `tools/list` return the authenticated v1 tool catalog; `POST /api/mcp` dispatches `memory_save`, `memory_search`, `memory_recall_recent`, and `memory_get`.
 - `GET /api/inngest`, `POST /api/inngest`, and `PUT /api/inngest` serve the Inngest worker functions.
 - `GET /login` renders the magic-link sign-in form.
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
@@ -59,7 +59,7 @@ MCP key verification is the exception: `public.verify_mcp_api_key(...)` is calla
 
 MCP API keys use `alex_<8-hex-prefix>_<32-hex-secret>`. The prefix is stored for lookup; the full presented key is checked against the stored bcrypt hash and revoked keys are rejected.
 
-`POST /api/mcp` accepts a Bearer key and a `memory_save` body:
+`POST /api/mcp` accepts a Bearer key and the locked v1 tools: `memory_save`, `memory_search`, `memory_recall_recent`, and `memory_get`. A direct `memory_save` body looks like:
 
 ```json
 {
@@ -85,7 +85,7 @@ On success it returns `202`:
 }
 ```
 
-The synchronous path trims content, normalizes tags to lowercase slug names, writes a `processing` memory plus initial revision/tag/audit/usage rows, and enqueues the Inngest event `memory/process.requested`.
+The synchronous save path trims content, normalizes tags to lowercase slug names, writes a `processing` memory plus initial revision/tag/audit/usage rows, and enqueues the Inngest event `memory/process.requested`. Read tools return only workspace-scoped, active, non-deleted memories with tags, source metadata, and author labels; `memory_get` returns 404 for missing or cross-workspace IDs.
 
 ## Memory Worker
 

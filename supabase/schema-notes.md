@@ -51,3 +51,9 @@
 - `save_mcp_memory` calls `set_mcp_session(...)` at the start of its single database transaction. The subsequent inserts rely on RLS policies scoped by `has_active_mcp_session(workspace_id)`, so a revoked key, unknown key id, or key/workspace mismatch cannot write tenant data.
 - Tags submitted to `memory_save` are normalized at the TypeScript boundary and validated again in SQL. The function inserts missing emergent tags into `workspace_tags` with `curated=false`, reuses existing same-workspace tags, and writes `memory_tags` join rows for the new memory.
 - Added `supabase/validation/alex_004_mcp_memory_save_path.sql` as a live DB validation script for two-workspace behavior, valid key verification, revoked/invalid rejection, cross-workspace denial, transaction-local session settings, and complete `memory_save` persistence under the intended executor path.
+
+## ALEX-006 MCP memory read tools
+
+- `public.search_mcp_memories`, `public.recall_recent_mcp_memories`, and `public.get_mcp_memory` are `SECURITY INVOKER` RPCs executed as `mcp_session_executor`. Each function binds the validated workspace/key with `set_mcp_session(...)`, keeps application filters on `workspace_id`, and relies on MCP RLS policies for defense in depth.
+- The v1 MCP route exposes exactly `memory_save`, `memory_search`, `memory_recall_recent`, and `memory_get`. `GET /api/mcp` and `tools/list` return the locked tool descriptions from the product note, and unsupported destructive/admin methods remain unavailable.
+- Read responses include provenance fields (`author_label`, `source`, `source_client`, timestamps, and tags). Search and recall exclude deleted, superseded, non-active, and cross-workspace memories; `memory_get` returns 404 for missing or cross-workspace ids.

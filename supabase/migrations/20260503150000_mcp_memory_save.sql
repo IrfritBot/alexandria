@@ -47,7 +47,7 @@ begin
     select 1
     from jsonb_array_elements_text(v_tags) as tag(name)
     where length(tag.name) = 0
-      or tag.name !~ '^[a-z0-9:](?:[a-z0-9:-]*[a-z0-9:])?$'
+      or tag.name !~ '^[a-z0-9:](?:[a-z0-9:/-]*[a-z0-9:])?$'
       or tag.name ~ '--'
   ) then
     raise exception 'invalid_input:tags' using errcode = '22023';
@@ -244,7 +244,7 @@ create policy workspace_tags_insert_mcp_session
   with check (
     public.has_active_mcp_session(workspace_id)
     and name = lower(name)
-    and name ~ '^[a-z0-9:](?:[a-z0-9:-]*[a-z0-9:])?$'
+    and name ~ '^[a-z0-9:](?:[a-z0-9:/-]*[a-z0-9:])?$'
     and name !~ '--'
     and display_name is null
     and description is null
