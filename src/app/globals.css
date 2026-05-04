@@ -1,9 +1,27 @@
 :root {
   color-scheme: light;
-  --background: #f7f7f4;
-  --foreground: #171717;
-  --muted: #5f6468;
-  --border: #d9d9d2;
+  --paper: #fbfaf6;
+  --paper-warm: #f5f0e8;
+  --ink: #151412;
+  --ink-soft: #3f3b35;
+  --muted: #726b61;
+  --line: #e2dbcf;
+  --line-strong: #cfc4b4;
+  --amber: #d9902f;
+  --amber-soft: #f6dca7;
+  --sage: #5f7049;
+  --blue: #5b7cfa;
+  --blue-soft: #dce5ff;
+  --rose-soft: #f5d8d1;
+  --card: rgba(255, 255, 252, 0.82);
+  --shadow: 0 24px 80px rgba(71, 54, 29, 0.12);
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --border: var(--line);
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    serif;
+  --font-ui: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -16,12 +34,28 @@ body {
   min-height: 100%;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui);
+  text-rendering: optimizeLegibility;
 }
 
 a {
   color: inherit;
+}
+
+::selection {
+  background: var(--amber-soft);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

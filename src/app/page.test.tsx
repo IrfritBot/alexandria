@@ -70,8 +70,15 @@ describe("home page", () => {
 
     expect(getUser).toHaveBeenCalledOnce();
     expect(from).not.toHaveBeenCalled();
-    expect(html).toContain("Shared team memory");
+    expect(html).toContain("One memory layer for every AI your team uses.");
+    expect(html).toContain("MCP-native team memory");
+    expect(html).toContain("Your team context resets every time");
+    expect(html).toContain("Capture once. Retrieve everywhere.");
+    expect(html).toContain("Shared memory only works if teams can trust it.");
+    expect(html).toContain("memory_recall_recent");
+    expect(html).not.toContain("memory_recent");
     expect(html).toContain('href="/login"');
+    expect(html).toContain("Request access");
     expect(html).toContain("Sign in");
   });
 

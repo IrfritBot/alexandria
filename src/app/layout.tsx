@@ -3,7 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Alexandria",
-  description: "Shared team memory skeleton for Sprint 1A.",
+  description:
+    "MCP-native shared team memory for teams adopting AI across real workflows.",
 };
 
 export default function RootLayout({
