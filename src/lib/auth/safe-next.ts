@@ -1,3 +1,52 @@
+import { isValidRedirectUri } from "../oauth/clients";
+
+function isSafeOauthAuthorizeContinuation(next: string) {
+  if (
+    !next.startsWith("/") ||
+    next.startsWith("//") ||
+    next.includes("\\") ||
+    /\s/.test(next)
+  ) {
+    return false;
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(next, "https://alexandria.local");
+  } catch {
+    return false;
+  }
+
+  if (
+    parsedUrl.origin !== "https://alexandria.local" ||
+    parsedUrl.pathname !== "/oauth/authorize" ||
+    parsedUrl.hash.length > 0
+  ) {
+    return false;
+  }
+
+  for (const [key, value] of parsedUrl.searchParams) {
+    if (key.includes(":") || key.includes("\\") || /\s/.test(key)) {
+      return false;
+    }
+
+    if (key === "redirect_uri") {
+      if (!isValidRedirectUri(value)) {
+        return false;
+      }
+
+      continue;
+    }
+
+    if (value.includes(":") || value.includes("//")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function getSafeNext(rawNext: string | null): string {
   if (!rawNext) {
     return "/";
@@ -11,6 +60,10 @@ export function getSafeNext(rawNext: string | null): string {
     return "/";
   }
 
+  if (isSafeOauthAuthorizeContinuation(next)) {
+    return next;
+  }
+
   if (
     !next.startsWith("/") ||
     next.includes("//") ||
@@ -18,7 +71,7 @@ export function getSafeNext(rawNext: string | null): string {
     // ":" rejection is intentional per the ALEX-002 plan, including in query strings.
     next.includes(":") ||
     /\s/.test(next) ||
-    /^\/(?:api|auth)(?:\/|$)/i.test(next)
+    /^\/(?:api|auth|oauth)(?:\/|$)/i.test(next)
   ) {
     return "/";
   }

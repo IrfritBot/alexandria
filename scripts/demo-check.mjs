@@ -100,11 +100,13 @@ async function fetchJson(path, options = {}) {
 }
 
 function mcpHeaders() {
-  const key = process.env.ALEXANDRIA_DEMO_MCP_KEY;
+  const key =
+    process.env.ALEXANDRIA_DEMO_OAUTH_TOKEN ||
+    process.env.ALEXANDRIA_DEMO_MCP_KEY;
 
   assert(
     key,
-    "Set ALEXANDRIA_DEMO_MCP_KEY to a one-time key from /workspaces/[slug]/keys before running demo:check.",
+    "Set ALEXANDRIA_DEMO_MCP_KEY to a one-time key from /workspaces/[slug]/keys, or ALEXANDRIA_DEMO_OAUTH_TOKEN to an OAuth access token, before running demo:check.",
   );
 
   return {
@@ -233,7 +235,7 @@ async function main() {
   ]) {
     assert(toolNames.includes(toolName), `MCP tool list is missing ${toolName}.`);
   }
-  logOk("MCP key authenticated and tool catalog is complete");
+  logOk("MCP bearer authenticated and tool catalog is complete");
 
   const save = await mcpPost(
     "memory_save",

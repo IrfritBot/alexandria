@@ -44,4 +44,33 @@ describe("getSafeNext", () => {
     expect(getSafeNext("/auth/callback")).toBe("/");
     expect(getSafeNext("/auth")).toBe("/");
   });
+
+  it("allows only OAuth authorize continuations with validated redirect URIs", () => {
+    const authorizeNext =
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&code_challenge=abc&code_challenge_method=S256";
+
+    expect(getSafeNext(authorizeNext)).toBe(
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&code_challenge=abc&code_challenge_method=S256",
+    );
+    expect(
+      getSafeNext(
+        "/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A53682%2Fcallback",
+      ),
+    ).toBe("/oauth/authorize?redirect_uri=http://localhost:53682/callback");
+  });
+
+  it("keeps non-authorize OAuth paths and unsafe OAuth queries rejected", () => {
+    expect(
+      getSafeNext(
+        "/oauth/token?redirect_uri=https%3A%2F%2Fclient.example%2Fcallback",
+      ),
+    ).toBe("/");
+    expect(getSafeNext("/oauth/authorize?x=https%3A%2F%2Fevil.example")).toBe(
+      "/",
+    );
+    expect(getSafeNext("/oauth/authorize?redirect_uri=javascript%3Aalert(1)")).toBe(
+      "/",
+    );
+    expect(getSafeNext("//evil.example/oauth/authorize")).toBe("/");
+  });
 });

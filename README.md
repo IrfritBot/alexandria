@@ -79,17 +79,22 @@ export ALEXANDRIA_DEMO_WORKSPACE_SLUG=alexandria-demo
 npm run demo:check
 ```
 
-`npm run demo:check` verifies health, login rendering, MCP key authentication,
-`memory_save`, processing completion, `memory_search`, and `memory_get`. For
-full signed-in web browse automation, also set `ALEXANDRIA_DEMO_COOKIE` to the
-browser request `Cookie` header for the local app; otherwise the command prints
-the memories URL to open while signed in.
+`npm run demo:check` verifies health, login rendering, MCP bearer
+authentication, `memory_save`, processing completion, `memory_search`, and
+`memory_get`. For OAuth connector smoke checks, set
+`ALEXANDRIA_DEMO_OAUTH_TOKEN` instead of `ALEXANDRIA_DEMO_MCP_KEY`; the same MCP
+tool smoke path runs with that bearer. For full signed-in web browse automation,
+also set `ALEXANDRIA_DEMO_COOKIE` to the browser request `Cookie` header for the
+local app; otherwise the command prints the memories URL to open while signed in.
 
 ## Auth Flow
 
 Alexandria uses Supabase magic-link auth for the web user path. `/login` sends an OTP email with an `emailRedirectTo` callback at `/auth/callback`; the callback exchanges the code for a cookie-backed session, synchronizes the user's `profiles` row through `public.ensure_profile(...)`, then redirects to a validated internal `next` path.
 
 The only redirect helper is `src/lib/auth/safe-next.ts`. It defaults to `/` and rejects external URLs, protocol injection, double slashes, backslashes, whitespace, `/api/...`, and `/auth/...` targets.
+The one narrow exception is `/oauth/authorize?...`: it is allowed as a login
+continuation only so OAuth clients can carry validated `redirect_uri` values
+through browser sign-in.
 
 ## Supabase Clients
 
@@ -117,6 +122,11 @@ MCP key verification is the exception: `public.verify_mcp_api_key(...)` is calla
 
 - `GET /api/health` returns a 200 JSON health payload.
 - `GET /api/mcp` and `POST /api/mcp` `tools/list` return the authenticated v1 tool catalog; `POST /api/mcp` dispatches `memory_save`, `memory_search`, `memory_recall_recent`, and `memory_get`.
+- `GET /.well-known/oauth-protected-resource` advertises `/api/mcp` as the MCP OAuth resource.
+- `GET /.well-known/oauth-authorization-server` advertises the OAuth authorize, token, and dynamic registration endpoints.
+- `POST /oauth/register` dynamically registers public MCP OAuth clients.
+- `GET /oauth/authorize` and `POST /oauth/authorize` guide signed-in users through workspace/scopes consent.
+- `POST /oauth/token` exchanges PKCE authorization codes and rotates refresh tokens for Alexandria OAuth bearer tokens.
 - `GET /api/inngest`, `POST /api/inngest`, and `PUT /api/inngest` serve the Inngest worker functions.
 - `GET /login` renders the magic-link sign-in form.
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
@@ -139,7 +149,34 @@ membership in Postgres.
 
 ## MCP HTTP Contract
 
+Alexandria supports two MCP connector modes:
+
+- Preferred remote connector: point the client at `/api/mcp`. Unauthenticated
+  calls return a `WWW-Authenticate` header with
+  `resource_metadata="<origin>/.well-known/oauth-protected-resource"`. OAuth
+  clients can then discover `/oauth/register`, `/oauth/authorize`, and
+  `/oauth/token`, send the user through the existing Supabase web login and
+  consent page, and use Alexandria bearer tokens for MCP calls.
+- Fallback/dev connector: create a manual MCP API key in
+  `/workspaces/[slug]/keys` and send it as `Authorization: Bearer <key>`.
+
+OAuth connector tokens are Alexandria-owned opaque tokens. They are stored only
+as hashes, map to an internal `oauth_*` MCP grant key for the existing RLS/RPC
+path, and do not expose Supabase JWTs, Supabase cookies, service-role keys, or
+raw token hashes to clients. Access tokens are scoped to `memory:read` and/or
+`memory:write`, and profile/workspace membership is re-checked on token use and
+refresh.
+
 MCP API keys use `alex_<8-hex-prefix>_<32-hex-secret>`. The prefix is stored for lookup; the full presented key is checked against the stored bcrypt hash and revoked keys are rejected.
+
+OAuth/MCP endpoint URLs:
+
+- MCP/resource URL: `/api/mcp`
+- Protected resource metadata: `/.well-known/oauth-protected-resource`
+- Authorization server metadata: `/.well-known/oauth-authorization-server`
+- Dynamic registration: `/oauth/register`
+- Authorization/consent: `/oauth/authorize`
+- Token exchange/refresh: `/oauth/token`
 
 `POST /api/mcp` accepts a Bearer key and the locked v1 tools: `memory_save`, `memory_search`, `memory_recall_recent`, and `memory_get`. A direct `memory_save` body looks like:
 

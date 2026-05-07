@@ -36,6 +36,12 @@ describe("MCP API keys", () => {
     expect(parsedKey?.keyPrefix).toHaveLength(8);
   });
 
+  it("does not parse internal OAuth grant key prefixes as API keys", () => {
+    expect(parseMcpApiKey("oauth_abcdef12_sentinel")).toBeNull();
+    expect(parseMcpApiKey(`alex_oauth_${"0".repeat(32)}`)).toBeNull();
+    expect(parseMcpApiKey(`alex_oauth_abcdef12_${"0".repeat(32)}`)).toBeNull();
+  });
+
   it("issues a one-time raw key while storing only prefix and hash inputs", async () => {
     const rpc = vi.fn(async (_functionName, args) => ({
       data: [

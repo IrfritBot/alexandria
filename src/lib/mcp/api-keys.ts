@@ -94,11 +94,24 @@ export type RevokeMcpKeyResult =
       field?: "workspaceId" | "mcpKeyId";
     };
 
-export type ValidMcpSession = {
+export type ApiKeyMcpSession = {
+  authKind: "api_key";
   workspaceId: string;
   mcpKeyId: string;
   keyPrefix: string;
 };
+
+export type OauthMcpSession = {
+  authKind: "oauth";
+  workspaceId: string;
+  mcpKeyId: string;
+  scopes: string[];
+  profileId: string;
+  clientId: string;
+  keyPrefix?: never;
+};
+
+export type ValidMcpSession = ApiKeyMcpSession | OauthMcpSession;
 
 export type McpApiKeyValidationResult =
   | { ok: true; session: ValidMcpSession }
