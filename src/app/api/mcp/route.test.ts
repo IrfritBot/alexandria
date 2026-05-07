@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GET, POST } from "./route";
 import { inngest } from "../../../lib/inngest/client";
@@ -235,13 +235,8 @@ async function expectUnauthorizedResponse(response: Response) {
 }
 
 describe("mcp route", () => {
-  beforeEach(() => {
-    vi.stubEnv("ALEXANDRIA_PROCESS_MEMORY_INLINE", "false");
-  });
-
   afterEach(() => {
     vi.clearAllMocks();
-    vi.unstubAllEnvs();
   });
 
   it("returns the locked v1 tool catalog for authenticated GET", async () => {

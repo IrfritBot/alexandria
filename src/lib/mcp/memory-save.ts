@@ -2,14 +2,11 @@ import "server-only";
 
 import type { ValidMcpSession } from "./api-keys";
 import { inngest } from "../inngest/client";
-import { processMemoryWithConfiguredDependencies } from "../memory/process-configured";
-import type { ProcessMemoryInput } from "../memory/processing";
 import { createSupabaseMcpExecutorClient } from "../supabase/mcp-executor";
 
 const MAX_CONTENT_CHARS = 8192;
 const MEMORY_SAVE_MESSAGE = "Memory accepted for processing.";
 
-export const PROCESS_MEMORY_INLINE_ENV = "ALEXANDRIA_PROCESS_MEMORY_INLINE";
 export const MEMORY_PROCESS_REQUESTED_EVENT = "memory/process.requested";
 
 type SupabaseError = {
@@ -39,8 +36,6 @@ type MemoryProcessingEventClient = {
   }): Promise<unknown>;
 };
 
-type InlineMemoryProcessor = (input: ProcessMemoryInput) => Promise<unknown>;
-
 export type MemorySaveField = "content" | "tags";
 
 export type MemorySaveResult =
@@ -55,7 +50,6 @@ export type MemorySaveResult =
       reason:
         | "invalid_input"
         | "invalid_mcp_session"
-        | "processing_failed"
         | "save_failed"
         | "enqueue_failed";
       field?: MemorySaveField;
@@ -124,12 +118,6 @@ export function validateMemorySavePayload(
   return { ok: true, content, tags };
 }
 
-export function shouldProcessMemoryInline(
-  value = process.env[PROCESS_MEMORY_INLINE_ENV],
-) {
-  return value?.trim().toLowerCase() === "true";
-}
-
 function normalizeRpcRows(data: unknown): Record<string, unknown>[] {
   if (!Array.isArray(data)) {
     return [];
@@ -162,7 +150,6 @@ export async function saveMcpMemory(
   session: Pick<ValidMcpSession, "workspaceId" | "mcpKeyId">,
   dependencies?: {
     eventClient?: MemoryProcessingEventClient;
-    inlineProcessor?: InlineMemoryProcessor;
     rpcClient?: RpcClient;
   },
 ): Promise<MemorySaveResult> {
@@ -209,29 +196,6 @@ export async function saveMcpMemory(
   }
 
   const memoryId = row.memory_id;
-
-  if (shouldProcessMemoryInline()) {
-    const inlineProcessor =
-      dependencies?.inlineProcessor ?? processMemoryWithConfiguredDependencies;
-
-    try {
-      await inlineProcessor({
-        mcpKeyId: session.mcpKeyId,
-        memoryId,
-        workspaceId: session.workspaceId,
-      });
-    } catch {
-      return { ok: false, reason: "processing_failed" };
-    }
-
-    return {
-      ok: true,
-      memoryId,
-      message: MEMORY_SAVE_MESSAGE,
-      status: "processing",
-    };
-  }
-
   const eventClient =
     dependencies?.eventClient ?? (inngest as MemoryProcessingEventClient);
 
