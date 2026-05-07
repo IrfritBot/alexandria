@@ -138,6 +138,7 @@ revoke all on function public.consume_oauth_authorization_code(text) from mcp_se
 grant execute on function public.consume_oauth_authorization_code(text) to service_role;
 
 create or replace function public.rotate_oauth_refresh_token(
+  p_client_id text,
   p_refresh_token_hash text,
   p_new_token_hash text,
   p_new_refresh_token_hash text,
@@ -165,6 +166,7 @@ as $$
     update public.oauth_access_tokens token
     set revoked_at = now()
     where token.refresh_token_hash = p_refresh_token_hash
+      and token.client_id = p_client_id
       and token.refresh_token_hash is not null
       and token.revoked_at is null
       and token.refresh_expires_at > now()
@@ -231,10 +233,12 @@ revoke all on function public.rotate_oauth_refresh_token(
   text,
   text,
   text,
+  text,
   timestamptz,
   timestamptz
 ) from public;
 revoke all on function public.rotate_oauth_refresh_token(
+  text,
   text,
   text,
   text,
@@ -245,6 +249,7 @@ revoke all on function public.rotate_oauth_refresh_token(
   text,
   text,
   text,
+  text,
   timestamptz,
   timestamptz
 ) from authenticated;
@@ -252,10 +257,12 @@ revoke all on function public.rotate_oauth_refresh_token(
   text,
   text,
   text,
+  text,
   timestamptz,
   timestamptz
 ) from mcp_session_executor;
 grant execute on function public.rotate_oauth_refresh_token(
+  text,
   text,
   text,
   text,

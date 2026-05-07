@@ -140,6 +140,7 @@ async function refreshTokenGrant(formData: FormData) {
   const supabase = createSupabaseServiceRoleClient() as never;
   const tokenPair = createOAuthTokenPair();
   const rotatedGrant = await rotateOAuthRefreshToken(supabase, {
+    clientId,
     newTokenPair: tokenPair,
     refreshToken,
   });

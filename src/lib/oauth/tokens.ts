@@ -210,12 +210,14 @@ export async function consumeOAuthAuthorizationCode(
 export async function rotateOAuthRefreshToken(
   client: RpcClient,
   input: {
+    clientId: string;
     newTokenPair: OAuthTokenPair;
     refreshToken: string;
   },
 ) {
   const { data, error } = await client.rpc("rotate_oauth_refresh_token", {
     p_access_expires_at: input.newTokenPair.accessExpiresAt.toISOString(),
+    p_client_id: input.clientId,
     p_new_refresh_token_hash: input.newTokenPair.refreshTokenHash,
     p_new_token_hash: input.newTokenPair.accessTokenHash,
     p_refresh_expires_at: input.newTokenPair.refreshExpiresAt.toISOString(),

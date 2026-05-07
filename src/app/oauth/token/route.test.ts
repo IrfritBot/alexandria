@@ -284,6 +284,7 @@ describe("OAuth token route", () => {
     });
     expect(rpc).toHaveBeenCalledWith("rotate_oauth_refresh_token", {
       p_access_expires_at: "2026-05-07T13:30:00.000Z",
+      p_client_id: "alex_client_123",
       p_new_refresh_token_hash: sha256Token(body.refresh_token),
       p_new_token_hash: sha256Token(body.access_token),
       p_refresh_expires_at: "2026-06-06T12:30:00.000Z",

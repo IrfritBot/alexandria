@@ -172,13 +172,18 @@ describe("OAuth token helpers", () => {
     await expect(
       rotateOAuthRefreshToken(
         { rpc },
-        { newTokenPair: tokenPair, refreshToken: "refresh-token" },
+        {
+          clientId: "alex_client_1",
+          newTokenPair: tokenPair,
+          refreshToken: "refresh-token",
+        },
       ),
     ).resolves.toMatchObject({
       mcpKeyId: "mcp-key-1",
     });
     expect(rpc).toHaveBeenCalledWith("rotate_oauth_refresh_token", {
       p_access_expires_at: tokenPair.accessExpiresAt.toISOString(),
+      p_client_id: "alex_client_1",
       p_new_refresh_token_hash: tokenPair.refreshTokenHash,
       p_new_token_hash: tokenPair.accessTokenHash,
       p_refresh_expires_at: tokenPair.refreshExpiresAt.toISOString(),

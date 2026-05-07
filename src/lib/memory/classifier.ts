@@ -199,14 +199,14 @@ function getAnthropicModel(tier: "basic" | "pro") {
     return (
       process.env.ANTHROPIC_PRO_CLASSIFIER_MODEL ??
       process.env.ANTHROPIC_CLASSIFIER_MODEL ??
-      "claude-sonnet-4-6"
+      "claude-3-5-sonnet-latest"
     );
   }
 
   return (
     process.env.ANTHROPIC_BASIC_CLASSIFIER_MODEL ??
     process.env.ANTHROPIC_CLASSIFIER_MODEL ??
-    "claude-haiku-4-5"
+    "claude-3-5-haiku-latest"
   );
 }
 

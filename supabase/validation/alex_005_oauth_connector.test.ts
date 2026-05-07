@@ -79,8 +79,10 @@ describe("ALEX-005 OAuth connector schema contracts", () => {
   it("rotates refresh tokens atomically and re-checks active membership", () => {
     const rotate = extractFunction("rotate_oauth_refresh_token");
 
+    expect(rotate).toContain("p_client_id text");
     expect(rotate).toContain("update public.oauth_access_tokens token");
     expect(rotate).toContain("token.refresh_token_hash = p_refresh_token_hash");
+    expect(rotate).toContain("token.client_id = p_client_id");
     expect(rotate).toContain("token.revoked_at is null");
     expect(rotate).toContain("token.refresh_expires_at > now()");
     expect(rotate).toContain("profile.deleted_at is null");

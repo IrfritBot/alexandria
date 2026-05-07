@@ -79,7 +79,7 @@
 - [ ] Do not modify existing `mcp_keys` schema.
 - [ ] Add private RPCs/functions for atomic OAuth one-time operations, callable only through service-role/server code (revoke from public/anon/authenticated/mcp executor):
   - `public.consume_oauth_authorization_code(p_code_hash text)` updates one matching unconsumed/unexpired code to `consumed_at = now()` and returns the code row in one statement. It is acceptable for mismatched redirect/PKCE attempts to consume the code after lookup; never allow replay.
-  - `public.rotate_oauth_refresh_token(p_refresh_token_hash text, p_new_token_hash text, p_new_refresh_token_hash text, p_access_expires_at timestamptz, p_refresh_expires_at timestamptz)` atomically revokes/replaces refresh state or inserts the new token row tied to the same grant, depending on the final table design.
+  - `public.rotate_oauth_refresh_token(p_client_id text, p_refresh_token_hash text, p_new_token_hash text, p_new_refresh_token_hash text, p_access_expires_at timestamptz, p_refresh_expires_at timestamptz)` atomically revokes/replaces refresh state or inserts the new token row tied to the same grant, depending on the final table design.
   - If the implementer chooses service-role conditional `update ... returning` instead of RPC, tests must still prove atomic one-time behavior and no select-then-update replay window.
 - [ ] Add validation tests that assert table names, RLS enabled, no broad grants, token/code hash uniqueness, and atomic consume/rotate function presence or equivalent conditional-update tests.
 
