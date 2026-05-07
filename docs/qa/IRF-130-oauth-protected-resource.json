@@ -1,0 +1,10 @@
+{
+    "authorization_servers": [
+        "http://127.0.0.1:3199"
+    ],
+    "resource": "http://127.0.0.1:3199/api/mcp",
+    "scopes_supported": [
+        "memory:read",
+        "memory:write"
+    ]
+}
