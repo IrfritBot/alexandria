@@ -58,6 +58,13 @@ npm run dev
 npx inngest-cli@latest dev -u http://localhost:3000/api/inngest
 ```
 
+For a Mike-test/prod demo before Inngest Cloud is configured, set
+`ALEXANDRIA_PROCESS_MEMORY_INLINE=true` in the app environment. With that opt-in,
+`memory_save` persists the memory and runs classification/embedding/finalization
+inline, so `npm run demo:check` does not depend on `INNGEST_EVENT_KEY` or
+`INNGEST_SIGNING_KEY`. Leave it unset or `false` for the default async Inngest
+path.
+
 4. Complete the browser setup:
 
 - Open `http://localhost:3000/login`, enter a demo email, then open the local email from Inbucket at `http://localhost:54324` and follow the magic link.
@@ -160,11 +167,11 @@ On success it returns `202`:
 }
 ```
 
-The synchronous save path trims content, normalizes tags to lowercase slug names, writes a `processing` memory plus initial revision/tag/audit/usage rows, and enqueues the Inngest event `memory/process.requested`. Read tools return only workspace-scoped, active, non-deleted memories with tags, source metadata, and author labels; `memory_get` returns 404 for missing or cross-workspace IDs.
+The synchronous save path trims content, normalizes tags to lowercase slug names, and writes a `processing` memory plus initial revision/tag/audit/usage rows. By default it enqueues the Inngest event `memory/process.requested`; when `ALEXANDRIA_PROCESS_MEMORY_INLINE=true`, it runs the same processing pipeline inline instead of enqueueing. Read tools return only workspace-scoped, active, non-deleted memories with tags, source metadata, and author labels; `memory_get` returns 404 for missing or cross-workspace IDs.
 
 ## Memory Worker
 
-`POST /api/mcp` does not call model providers directly. It enqueues `memory/process.requested`, and `src/lib/memory/inngest.ts` serves the `memory-process-v1` Inngest function through `/api/inngest`.
+By default, `POST /api/mcp` does not call model providers directly: it enqueues `memory/process.requested`, and `src/lib/memory/inngest.ts` serves the `memory-process-v1` Inngest function through `/api/inngest`. For Mike-test/prod demos with `ALEXANDRIA_PROCESS_MEMORY_INLINE=true`, `memory_save` calls the same classifier/embedder/finalizer inline in the request path and skips enqueueing to avoid duplicate processing.
 
 The worker loads the processing memory, classifies kind, creates an embedding, retrieves active same-kind conflict candidates, writes conflict rows, records a revision, updates the memory, and appends audit/usage rows. Basic workspaces use the Anthropic basic classifier model and OpenAI embeddings. Pro workspaces use the Anthropic pro classifier model and Voyage embeddings when configured.
 

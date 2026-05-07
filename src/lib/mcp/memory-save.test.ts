@@ -1,15 +1,25 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MEMORY_PROCESS_REQUESTED_EVENT,
+  PROCESS_MEMORY_INLINE_ENV,
   saveMcpMemory,
+  shouldProcessMemoryInline,
   validateMemorySavePayload,
 } from "./memory-save";
 
 vi.mock("server-only", () => ({}));
+
+beforeEach(() => {
+  vi.stubEnv(PROCESS_MEMORY_INLINE_ENV, "false");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function migrationSql() {
   return readFileSync(
@@ -66,6 +76,16 @@ describe("validateMemorySavePayload", () => {
   });
 });
 
+describe("shouldProcessMemoryInline", () => {
+  it("only enables inline processing for true", () => {
+    expect(shouldProcessMemoryInline("true")).toBe(true);
+    expect(shouldProcessMemoryInline(" TRUE ")).toBe(true);
+    expect(shouldProcessMemoryInline("false")).toBe(false);
+    expect(shouldProcessMemoryInline("1")).toBe(false);
+    expect(shouldProcessMemoryInline(undefined)).toBe(false);
+  });
+});
+
 describe("saveMcpMemory", () => {
   it("calls the memory save RPC and enqueues the processing event", async () => {
     const rpc = vi.fn(async () => ({
@@ -117,6 +137,57 @@ describe("saveMcpMemory", () => {
       },
       name: MEMORY_PROCESS_REQUESTED_EVENT,
     });
+  });
+
+  it("processes the saved memory inline without enqueueing when opted in", async () => {
+    vi.stubEnv(PROCESS_MEMORY_INLINE_ENV, "true");
+
+    const rpc = vi.fn(async () => ({
+      data: [
+        {
+          memory_id: "memory-1",
+          status: "processing",
+        },
+      ],
+      error: null,
+    }));
+    const eventClient = {
+      send: vi.fn(async () => ({ ids: ["event-1"] })),
+    };
+    const inlineProcessor = vi.fn(async () => ({
+      memoryId: "memory-1",
+      ok: true,
+      status: "active",
+    }));
+
+    await expect(
+      saveMcpMemory(
+        {
+          content: "Remember the deploy freeze.",
+          tags: ["Policy"],
+        },
+        {
+          mcpKeyId: "mcp-key-1",
+          workspaceId: "workspace-1",
+        },
+        {
+          eventClient,
+          inlineProcessor,
+          rpcClient: { rpc },
+        },
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      memoryId: "memory-1",
+      message: "Memory accepted for processing.",
+      status: "processing",
+    });
+    expect(inlineProcessor).toHaveBeenCalledWith({
+      mcpKeyId: "mcp-key-1",
+      memoryId: "memory-1",
+      workspaceId: "workspace-1",
+    });
+    expect(eventClient.send).not.toHaveBeenCalled();
   });
 
   it("documents the database write loop in the migration", () => {

@@ -1,9 +1,6 @@
 import { MEMORY_PROCESS_REQUESTED_EVENT } from "../mcp/memory-save";
 import { inngest } from "../inngest/client";
-import { createConfiguredClassifier } from "./classifier";
-import { createConfiguredEmbedder } from "./embedder";
-import { processMemory } from "./processing";
-import { createSupabaseMemoryProcessingDatabase } from "./processing-store";
+import { processMemoryWithConfiguredDependencies } from "./process-configured";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,11 +39,7 @@ export const processMemoryFunction = inngest.createFunction(
     }
 
     return step.run("classify-embed-conflict-finalize", async () =>
-      processMemory(data, {
-        classifier: createConfiguredClassifier(),
-        database: createSupabaseMemoryProcessingDatabase(),
-        embedder: createConfiguredEmbedder(),
-      }),
+      processMemoryWithConfiguredDependencies(data),
     );
   },
 );
