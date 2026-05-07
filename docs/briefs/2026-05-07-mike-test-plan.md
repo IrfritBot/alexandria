@@ -1,7 +1,7 @@
 # Alexandria — Mike Test Plan
 
-_Date: 2026-05-07_  
-_Audience: Mike / first design-partner test_  
+_Date: 2026-05-07_
+_Audience: Mike / first design-partner test_
 _Status: Draft until production smoke passes._
 
 ## What we want Mike to test today

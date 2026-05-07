@@ -328,4 +328,3 @@ begin
   return query select v_memory_id, 'processing'::text;
 end;
 $$;
-
