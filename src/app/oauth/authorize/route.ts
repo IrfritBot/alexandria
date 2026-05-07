@@ -368,6 +368,14 @@ function formSearchParams(formData: FormData) {
   return searchParams;
 }
 
+function consentDecision(formData: FormData) {
+  const decisions = formData.getAll("decision");
+
+  return decisions.length === 1 && typeof decisions[0] === "string"
+    ? decisions[0]
+    : null;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const client = await loadClient(getAuthorizeClientId(requestUrl.searchParams));
@@ -434,7 +442,7 @@ export async function POST(request: Request) {
   }
 
   const oauthRequest = validatedRequest.request;
-  const decision = formData.get("decision");
+  const decision = consentDecision(formData);
 
   if (decision !== "approve") {
     return redirectResponse(

@@ -98,7 +98,7 @@ function mockAuthorizeSupabase({
 }
 
 function form(overrides: Record<string, string> = {}) {
-  return new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: "client-1",
     code_challenge: "challenge",
     code_challenge_method: "S256",
@@ -107,10 +107,31 @@ function form(overrides: Record<string, string> = {}) {
     response_type: "code",
     scope: "memory:read memory:write",
     state: "state-1",
-    decision: "approve",
     workspace_id: "workspace-1",
-    ...overrides,
   });
+
+  for (const [name, value] of Object.entries(overrides)) {
+    params.set(name, value);
+  }
+
+  return params;
+}
+
+function renderedApproveDecision(html: string) {
+  const approveButton = html.match(
+    /<button\b[^>]*>\s*Approve\s*<\/button>/,
+  )?.[0];
+  const name = approveButton?.match(/\bname="([^"]+)"/)?.[1];
+  const value = approveButton?.match(/\bvalue="([^"]+)"/)?.[1];
+
+  expect(name).toBe("decision");
+  expect(value).toBe("approve");
+
+  if (!name || !value) {
+    throw new Error("Rendered approve button is missing a name or value.");
+  }
+
+  return { name, value };
 }
 
 describe("OAuth authorize route", () => {
@@ -187,7 +208,7 @@ describe("OAuth authorize route", () => {
 
     const response = await POST(
       new Request("https://alexandria.test/oauth/authorize", {
-        body: form({ workspace_id: "workspace-other" }),
+        body: form({ decision: "approve", workspace_id: "workspace-other" }),
         headers: {
           cookie: `${OAUTH_CSRF_COOKIE_NAME}=csrf-1`,
         },
@@ -201,11 +222,10 @@ describe("OAuth authorize route", () => {
     expect(insertAuthorizationCode).not.toHaveBeenCalled();
   });
 
-  it("requires an explicit approve decision before issuing an authorization code", async () => {
+  it("redirects missing consent decisions with access_denied while preserving state", async () => {
     const { insertAuthorizationCode } = mockAuthorizeSupabase();
     const body = form();
 
-    body.delete("decision");
     body.set("submit_action", "approve");
 
     const response = await POST(
@@ -221,15 +241,51 @@ describe("OAuth authorize route", () => {
 
     expect(response.status).toBe(303);
     expect(redirect.searchParams.get("error")).toBe("access_denied");
+    expect(redirect.searchParams.get("state")).toBe("state-1");
+    expect(redirect.searchParams.has("code")).toBe(false);
+    expect(insertAuthorizationCode).not.toHaveBeenCalled();
+  });
+
+  it("redirects deny, unknown, and malformed consent decisions without granting while preserving state", async () => {
+    const { insertAuthorizationCode } = mockAuthorizeSupabase();
+    const malformed = form({ decision: "approve" });
+    const cases = [
+      form({ decision: "deny" }),
+      form({ decision: "maybe" }),
+      malformed,
+    ];
+
+    malformed.append("decision", "deny");
+
+    for (const body of cases) {
+      const response = await POST(
+        new Request("https://alexandria.test/oauth/authorize", {
+          body,
+          headers: {
+            cookie: `${OAUTH_CSRF_COOKIE_NAME}=csrf-1`,
+          },
+          method: "POST",
+        }),
+      );
+      const redirect = new URL(response.headers.get("location") ?? "");
+
+      expect(response.status).toBe(303);
+      expect(redirect.searchParams.get("error")).toBe("access_denied");
+      expect(redirect.searchParams.get("state")).toBe("state-1");
+      expect(redirect.searchParams.has("code")).toBe(false);
+    }
+
     expect(insertAuthorizationCode).not.toHaveBeenCalled();
   });
 
   it("issues a short-lived authorization code and redirects back to the client", async () => {
     const { insertAuthorizationCode } = mockAuthorizeSupabase();
+    const consent = await GET(new Request(authorizeUrl));
+    const approveDecision = renderedApproveDecision(await consent.text());
 
     const response = await POST(
       new Request("https://alexandria.test/oauth/authorize", {
-        body: form(),
+        body: form({ [approveDecision.name]: approveDecision.value }),
         headers: {
           cookie: `${OAUTH_CSRF_COOKIE_NAME}=csrf-1`,
         },
