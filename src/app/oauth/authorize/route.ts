@@ -434,8 +434,9 @@ export async function POST(request: Request) {
   }
 
   const oauthRequest = validatedRequest.request;
+  const decision = formData.get("decision");
 
-  if (formData.get("decision") === "deny") {
+  if (decision !== "approve") {
     return redirectResponse(
       redirectWithOAuthResult({
         error: "access_denied",

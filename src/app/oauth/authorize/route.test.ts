@@ -107,7 +107,7 @@ function form(overrides: Record<string, string> = {}) {
     response_type: "code",
     scope: "memory:read memory:write",
     state: "state-1",
-    submit_action: "approve",
+    decision: "approve",
     workspace_id: "workspace-1",
     ...overrides,
   });
@@ -188,6 +188,29 @@ describe("OAuth authorize route", () => {
     const response = await POST(
       new Request("https://alexandria.test/oauth/authorize", {
         body: form({ workspace_id: "workspace-other" }),
+        headers: {
+          cookie: `${OAUTH_CSRF_COOKIE_NAME}=csrf-1`,
+        },
+        method: "POST",
+      }),
+    );
+    const redirect = new URL(response.headers.get("location") ?? "");
+
+    expect(response.status).toBe(303);
+    expect(redirect.searchParams.get("error")).toBe("access_denied");
+    expect(insertAuthorizationCode).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit approve decision before issuing an authorization code", async () => {
+    const { insertAuthorizationCode } = mockAuthorizeSupabase();
+    const body = form();
+
+    body.delete("decision");
+    body.set("submit_action", "approve");
+
+    const response = await POST(
+      new Request("https://alexandria.test/oauth/authorize", {
+        body,
         headers: {
           cookie: `${OAUTH_CSRF_COOKIE_NAME}=csrf-1`,
         },
