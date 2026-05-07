@@ -1,11 +1,11 @@
 import { isValidRedirectUri } from "../oauth/clients";
+import { parseOAuthScopes } from "../oauth/scopes";
 
 function isSafeOauthAuthorizeContinuation(next: string) {
   if (
     !next.startsWith("/") ||
     next.startsWith("//") ||
-    next.includes("\\") ||
-    /\s/.test(next)
+    next.includes("\\")
   ) {
     return false;
   }
@@ -39,7 +39,15 @@ function isSafeOauthAuthorizeContinuation(next: string) {
       continue;
     }
 
-    if (value.includes(":") || value.includes("//")) {
+    if (key === "scope") {
+      if (/[\t\n\f\r\v]/.test(value) || !parseOAuthScopes(value).ok) {
+        return false;
+      }
+
+      continue;
+    }
+
+    if (value.includes(":") || value.includes("//") || /\s/.test(value)) {
       return false;
     }
   }

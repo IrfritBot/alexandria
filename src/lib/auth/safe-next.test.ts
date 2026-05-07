@@ -59,6 +59,23 @@ describe("getSafeNext", () => {
     ).toBe("/oauth/authorize?redirect_uri=http://localhost:53682/callback");
   });
 
+  it("preserves OAuth authorize continuations with valid scope values", () => {
+    expect(
+      getSafeNext(
+        "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread%20memory%3Awrite&code_challenge=abc&code_challenge_method=S256",
+      ),
+    ).toBe(
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&scope=memory:read memory:write&code_challenge=abc&code_challenge_method=S256",
+    );
+    expect(
+      getSafeNext(
+        "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread+memory%3Awrite&code_challenge=abc&code_challenge_method=S256",
+      ),
+    ).toBe(
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&scope=memory:read+memory:write&code_challenge=abc&code_challenge_method=S256",
+    );
+  });
+
   it("keeps non-authorize OAuth paths and unsafe OAuth queries rejected", () => {
     expect(
       getSafeNext(
@@ -68,6 +85,10 @@ describe("getSafeNext", () => {
     expect(getSafeNext("/oauth/authorize?x=https%3A%2F%2Fevil.example")).toBe(
       "/",
     );
+    expect(getSafeNext("/oauth/authorize?x=%2F%2Fevil.example")).toBe("/");
+    expect(
+      getSafeNext("/oauth/authorize?scope=memory%3Aread%20admin%3Awrite"),
+    ).toBe("/");
     expect(getSafeNext("/oauth/authorize?redirect_uri=javascript%3Aalert(1)")).toBe(
       "/",
     );
