@@ -69,15 +69,6 @@ function normalizeSuggestedTags(value: unknown) {
   return value.filter((tag): tag is string => typeof tag === "string");
 }
 
-function unwrapJsonMarkdownFence(text: string) {
-  const trimmed = text.trim();
-  const match = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?```[ \t]*$/i.exec(
-    trimmed,
-  );
-
-  return match ? match[1].trim() : text;
-}
-
 export function buildClassifierPrompt(content: string) {
   return `You are classifying a piece of company knowledge into one of three kinds.
 Your output drives downstream conflict-resolution behavior, so be careful.
@@ -134,7 +125,7 @@ export function parseClassifierJson(text: string): Pick<
   let parsed: unknown;
 
   try {
-    parsed = JSON.parse(unwrapJsonMarkdownFence(text));
+    parsed = JSON.parse(text);
   } catch {
     throw new ClassifierProviderError("classifier returned invalid JSON");
   }
