@@ -33,6 +33,36 @@ describe("classifier", () => {
     });
   });
 
+  it("parses classifier JSON wrapped in a markdown code fence", () => {
+    expect(
+      parseClassifierJson(`\`\`\`json
+{
+  "kind": "policy",
+  "confidence": 0.82,
+  "suggested_tags": ["policy/refunds"]
+}
+\`\`\``),
+    ).toEqual({
+      confidence: 0.82,
+      kind: "policy",
+      suggestedTags: ["policy/refunds"],
+    });
+  });
+
+  it("does not extract JSON from prose around a markdown code fence", () => {
+    expect(() =>
+      parseClassifierJson(`Here is the classification:
+
+\`\`\`json
+{
+  "kind": "policy",
+  "confidence": 0.82,
+  "suggested_tags": ["policy/refunds"]
+}
+\`\`\``),
+    ).toThrow("classifier returned invalid JSON");
+  });
+
   it("provides a deterministic classifier seam when provider env is absent", async () => {
     const classifier = createDeterministicClassifier();
 
