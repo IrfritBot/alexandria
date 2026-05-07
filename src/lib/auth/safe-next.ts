@@ -1,11 +1,52 @@
 import { isValidRedirectUri } from "../oauth/clients";
 import { parseOAuthScopes } from "../oauth/scopes";
 
+function hasMalformedPercentEncoding(value: string) {
+  return /%(?![0-9A-Fa-f]{2})/.test(value);
+}
+
+function hasUnsafeOauthParamKey(key: string) {
+  if (key.includes(":") || key.includes("\\") || /\s/.test(key)) {
+    return true;
+  }
+
+  try {
+    const decodedKey = decodeURIComponent(key);
+
+    return (
+      decodedKey.includes(":") ||
+      decodedKey.includes("\\") ||
+      /\s/.test(decodedKey)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasUnsafeOauthParamValue(value: string) {
+  if (value.includes(":") || value.includes("//") || /\s/.test(value)) {
+    return true;
+  }
+
+  try {
+    const decodedValue = decodeURIComponent(value);
+
+    return (
+      decodedValue.includes(":") ||
+      decodedValue.includes("//") ||
+      /\s/.test(decodedValue)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isSafeOauthAuthorizeContinuation(next: string) {
   if (
     !next.startsWith("/") ||
     next.startsWith("//") ||
-    next.includes("\\")
+    next.includes("\\") ||
+    hasMalformedPercentEncoding(next)
   ) {
     return false;
   }
@@ -27,7 +68,7 @@ function isSafeOauthAuthorizeContinuation(next: string) {
   }
 
   for (const [key, value] of parsedUrl.searchParams) {
-    if (key.includes(":") || key.includes("\\") || /\s/.test(key)) {
+    if (hasUnsafeOauthParamKey(key)) {
       return false;
     }
 
@@ -47,7 +88,7 @@ function isSafeOauthAuthorizeContinuation(next: string) {
       continue;
     }
 
-    if (value.includes(":") || value.includes("//") || /\s/.test(value)) {
+    if (hasUnsafeOauthParamValue(value)) {
       return false;
     }
   }
@@ -55,24 +96,43 @@ function isSafeOauthAuthorizeContinuation(next: string) {
   return true;
 }
 
+function decodeNext(rawNext: string) {
+  try {
+    return decodeURIComponent(rawNext);
+  } catch {
+    return null;
+  }
+}
+
+function getSafeOauthAuthorizeNext(rawNext: string) {
+  if (isSafeOauthAuthorizeContinuation(rawNext)) {
+    return rawNext;
+  }
+
+  const next = decodeNext(rawNext);
+
+  if (next && isSafeOauthAuthorizeContinuation(next)) {
+    return next;
+  }
+
+  return null;
+}
+
 export function getSafeNext(rawNext: string | null): string {
   if (!rawNext) {
     return "/";
   }
 
-  let next: string;
+  const oauthAuthorizeNext = getSafeOauthAuthorizeNext(rawNext);
 
-  try {
-    next = decodeURIComponent(rawNext);
-  } catch {
-    return "/";
+  if (oauthAuthorizeNext) {
+    return oauthAuthorizeNext;
   }
 
-  if (isSafeOauthAuthorizeContinuation(next)) {
-    return next;
-  }
+  const next = decodeNext(rawNext);
 
   if (
+    !next ||
     !next.startsWith("/") ||
     next.includes("//") ||
     next.includes("\\") ||

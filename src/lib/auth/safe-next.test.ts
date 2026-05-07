@@ -49,31 +49,29 @@ describe("getSafeNext", () => {
     const authorizeNext =
       "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&code_challenge=abc&code_challenge_method=S256";
 
-    expect(getSafeNext(authorizeNext)).toBe(
-      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&code_challenge=abc&code_challenge_method=S256",
-    );
-    expect(
-      getSafeNext(
-        "/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A53682%2Fcallback",
-      ),
-    ).toBe("/oauth/authorize?redirect_uri=http://localhost:53682/callback");
+    expect(getSafeNext(authorizeNext)).toBe(authorizeNext);
+    const localhostAuthorizeNext =
+      "/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A53682%2Fcallback";
+
+    expect(getSafeNext(localhostAuthorizeNext)).toBe(localhostAuthorizeNext);
+  });
+
+  it("preserves nested OAuth redirect URI query strings", () => {
+    const authorizeNext =
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback%3Ffoo%3Dbar%26baz%3Dhttps%3A%2F%2Fapp.example&code_challenge=abc&code_challenge_method=S256";
+
+    expect(getSafeNext(authorizeNext)).toBe(authorizeNext);
+    expect(getSafeNext(encodeURIComponent(authorizeNext))).toBe(authorizeNext);
   });
 
   it("preserves OAuth authorize continuations with valid scope values", () => {
-    expect(
-      getSafeNext(
-        "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread%20memory%3Awrite&code_challenge=abc&code_challenge_method=S256",
-      ),
-    ).toBe(
-      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&scope=memory:read memory:write&code_challenge=abc&code_challenge_method=S256",
-    );
-    expect(
-      getSafeNext(
-        "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread+memory%3Awrite&code_challenge=abc&code_challenge_method=S256",
-      ),
-    ).toBe(
-      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https://client.example/callback&scope=memory:read+memory:write&code_challenge=abc&code_challenge_method=S256",
-    );
+    const spaceEncodedScopeNext =
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread%20memory%3Awrite&code_challenge=abc&code_challenge_method=S256";
+    const plusEncodedScopeNext =
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=memory%3Aread+memory%3Awrite&code_challenge=abc&code_challenge_method=S256";
+
+    expect(getSafeNext(spaceEncodedScopeNext)).toBe(spaceEncodedScopeNext);
+    expect(getSafeNext(plusEncodedScopeNext)).toBe(plusEncodedScopeNext);
   });
 
   it("keeps non-authorize OAuth paths and unsafe OAuth queries rejected", () => {
