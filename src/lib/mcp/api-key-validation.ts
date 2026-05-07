@@ -6,6 +6,7 @@ import {
   type McpApiKeyValidationResult,
   type McpBearerValidationResult,
 } from "./api-keys";
+import { validateOauthAccessToken } from "../oauth/tokens";
 import { createSupabaseServiceRoleClient } from "../supabase/service-role";
 
 type SupabaseError = {
@@ -66,6 +67,7 @@ export async function validateMcpApiKey(
     return {
       ok: true,
       session: {
+        authKind: "api_key",
         keyPrefix: parsedKey.keyPrefix,
         mcpKeyId: row.id,
         workspaceId: row.workspace_id,
@@ -86,5 +88,9 @@ export async function validateMcpBearerToken(
     return bearerToken;
   }
 
-  return validateMcpApiKey(bearerToken.token, rpcClient);
+  if (parseMcpApiKey(bearerToken.token)) {
+    return validateMcpApiKey(bearerToken.token, rpcClient);
+  }
+
+  return validateOauthAccessToken(bearerToken.token, rpcClient);
 }

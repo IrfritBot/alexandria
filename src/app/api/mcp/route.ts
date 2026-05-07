@@ -1,4 +1,6 @@
 import { validateMcpBearerToken } from "../../../lib/mcp/api-key-validation";
+import { mcpWwwAuthenticateHeader } from "../../../lib/oauth/metadata";
+import { hasScope } from "../../../lib/oauth/scopes";
 import {
   saveMcpMemory,
   type MemorySaveField,
@@ -28,7 +30,7 @@ type McpCall =
       reason: "invalid_json" | "tool_list" | "unsupported_method";
     };
 
-function unauthorizedResponse() {
+function unauthorizedResponse(request: Request) {
   return Response.json(
     {
       ok: false,
@@ -38,10 +40,22 @@ function unauthorizedResponse() {
     },
     {
       headers: {
-        "www-authenticate": "Bearer",
+        "www-authenticate": mcpWwwAuthenticateHeader(request),
       },
       status: 401,
     },
+  );
+}
+
+function insufficientScopeResponse() {
+  return Response.json(
+    {
+      ok: false,
+      service: "alexandria",
+      surface: "mcp",
+      error: "insufficient_scope",
+    },
+    { status: 403 },
   );
 }
 
@@ -176,7 +190,7 @@ export async function GET(request: Request) {
   const mcpAuth = await validateMcpBearerToken(request);
 
   if (!mcpAuth.ok) {
-    return unauthorizedResponse();
+    return unauthorizedResponse(request);
   }
 
   return toolListResponse();
@@ -186,7 +200,7 @@ export async function POST(request: Request) {
   const mcpAuth = await validateMcpBearerToken(request);
 
   if (!mcpAuth.ok) {
-    return unauthorizedResponse();
+    return unauthorizedResponse(request);
   }
 
   const call = await parseMcpCall(request);
@@ -204,6 +218,10 @@ export async function POST(request: Request) {
   }
 
   if (call.toolName === "memory_save") {
+    if (!hasScope(mcpAuth.session, "memory:write")) {
+      return insufficientScopeResponse();
+    }
+
     const result = await saveMcpMemory(call.params, mcpAuth.session);
 
     if (result.ok) {
@@ -226,13 +244,17 @@ export async function POST(request: Request) {
     }
 
     if (result.reason === "invalid_mcp_session") {
-      return unauthorizedResponse();
+      return unauthorizedResponse(request);
     }
 
     return toolFailedResponse("memory_save");
   }
 
   if (call.toolName === "memory_search") {
+    if (!hasScope(mcpAuth.session, "memory:read")) {
+      return insufficientScopeResponse();
+    }
+
     const result = await searchMcpMemories(call.params, mcpAuth.session);
 
     if (result.ok) {
@@ -251,13 +273,17 @@ export async function POST(request: Request) {
     }
 
     if (result.reason === "invalid_mcp_session") {
-      return unauthorizedResponse();
+      return unauthorizedResponse(request);
     }
 
     return toolFailedResponse("memory_search");
   }
 
   if (call.toolName === "memory_recall_recent") {
+    if (!hasScope(mcpAuth.session, "memory:read")) {
+      return insufficientScopeResponse();
+    }
+
     const result = await recallRecentMcpMemories(call.params, mcpAuth.session);
 
     if (result.ok) {
@@ -275,10 +301,14 @@ export async function POST(request: Request) {
     }
 
     if (result.reason === "invalid_mcp_session") {
-      return unauthorizedResponse();
+      return unauthorizedResponse(request);
     }
 
     return toolFailedResponse("memory_recall_recent");
+  }
+
+  if (!hasScope(mcpAuth.session, "memory:read")) {
+    return insufficientScopeResponse();
   }
 
   const result = await getMcpMemory(call.params, mcpAuth.session);
@@ -302,7 +332,7 @@ export async function POST(request: Request) {
   }
 
   if (result.reason === "invalid_mcp_session") {
-    return unauthorizedResponse();
+    return unauthorizedResponse(request);
   }
 
   return toolFailedResponse("memory_get");

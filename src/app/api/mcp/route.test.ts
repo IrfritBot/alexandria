@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET, POST } from "./route";
 import { inngest } from "../../../lib/inngest/client";
@@ -139,6 +139,15 @@ function mockMcpRpc({
       workspace_id: "workspace-1",
     },
   ],
+  oauthVerifyData = [
+    {
+      client_id: "client-1",
+      mcp_key_id: "oauth-mcp-key-1",
+      profile_id: "profile-1",
+      scopes: ["memory:read", "memory:write"],
+      workspace_id: "workspace-1",
+    },
+  ],
 }: {
   getData?: unknown[];
   recallData?: unknown[];
@@ -146,11 +155,19 @@ function mockMcpRpc({
   saveError?: { code?: string; message?: string } | null;
   searchData?: unknown[];
   verifyData?: unknown[];
+  oauthVerifyData?: unknown[];
 } = {}) {
   const verifyRpc = vi.fn(async (functionName: string) => {
     if (functionName === "verify_mcp_api_key") {
       return {
         data: verifyData,
+        error: null,
+      };
+    }
+
+    if (functionName === "verify_oauth_access_token") {
+      return {
+        data: oauthVerifyData,
         error: null,
       };
     }
@@ -212,12 +229,19 @@ function mockMcpRpc({
 async function expectUnauthorizedResponse(response: Response) {
   await expect(response.json()).resolves.toEqual(unauthorizedPayload);
   expect(response.status).toBe(401);
-  expect(response.headers.get("www-authenticate")).toBe("Bearer");
+  expect(response.headers.get("www-authenticate")).toBe(
+    'Bearer resource_metadata="https://alexandria.test/.well-known/oauth-protected-resource"',
+  );
 }
 
 describe("mcp route", () => {
+  beforeEach(() => {
+    vi.stubEnv("ALEXANDRIA_PROCESS_MEMORY_INLINE", "false");
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("returns the locked v1 tool catalog for authenticated GET", async () => {
@@ -407,6 +431,59 @@ describe("mcp route", () => {
       p_tags: ["client/ashley-stambouli"],
       p_workspace_id: "workspace-1",
     });
+  });
+
+  it("accepts OAuth bearer tokens for scoped MCP reads", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+    const oauthToken = `alex_oat_${"A".repeat(43)}`;
+
+    const response = await POST(
+      makeRequest(oauthToken, {
+        method: "memory_search",
+        params: {
+          query: "Ashley",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(verifyRpc).toHaveBeenCalledWith("verify_oauth_access_token", {
+      p_token_hash: expect.any(String),
+    });
+    expect(executorRpc).toHaveBeenCalledWith("search_mcp_memories", {
+      p_kind: null,
+      p_limit: 10,
+      p_mcp_key_id: "oauth-mcp-key-1",
+      p_query: "Ashley",
+      p_tags: [],
+      p_workspace_id: "workspace-1",
+    });
+  });
+
+  it("rejects OAuth bearer tokens without the required MCP scope", async () => {
+    const { executorRpc } = mockMcpRpc({
+      oauthVerifyData: [
+        {
+          client_id: "client-1",
+          mcp_key_id: "oauth-mcp-key-1",
+          profile_id: "profile-1",
+          scopes: ["memory:read"],
+          workspace_id: "workspace-1",
+        },
+      ],
+    });
+    const oauthToken = `alex_oat_${"B".repeat(43)}`;
+
+    const response = await POST(makeRequest(oauthToken, validMemorySaveCall));
+
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      service: "alexandria",
+      surface: "mcp",
+      error: "insufficient_scope",
+    });
+    expect(response.status).toBe(403);
+    expect(executorRpc).not.toHaveBeenCalled();
   });
 
   it("dispatches memory_recall_recent with workspace and author filters", async () => {
@@ -624,6 +701,18 @@ describe("mcp route", () => {
     await expectUnauthorizedResponse(await POST(makeRequest(null)));
     await expectUnauthorizedResponse(await POST(makeRequest("not-a-key")));
     expect(createSupabaseServiceRoleClient).not.toHaveBeenCalled();
+    expect(createSupabaseMcpExecutorClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects internal oauth_* sentinel key material on the legacy MCP API-key path", async () => {
+    await expectUnauthorizedResponse(
+      await POST(makeRequest("oauth_12345678_sentinel", validMemorySaveCall)),
+    );
+    await expectUnauthorizedResponse(
+      await POST(
+        makeRequest(`alex_oauth_12345678_${"0".repeat(32)}`, validMemorySaveCall),
+      ),
+    );
     expect(createSupabaseMcpExecutorClient).not.toHaveBeenCalled();
   });
 
