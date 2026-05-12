@@ -234,6 +234,37 @@ async function expectUnauthorizedResponse(response: Response) {
   );
 }
 
+async function expectJsonRpcToolPayload(
+  response: Response,
+  id: string | number,
+) {
+  const body = (await response.json()) as {
+    jsonrpc: "2.0";
+    id: string | number;
+    result: {
+      content: Array<{ type: "text"; text: string }>;
+      isError?: boolean;
+    };
+  };
+
+  expect(response.status).toBe(200);
+  expect(body).toEqual({
+    jsonrpc: "2.0",
+    id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text: expect.any(String),
+        },
+      ],
+    },
+  });
+  expect(body.result.isError).toBeUndefined();
+
+  return JSON.parse(body.result.content[0]?.text ?? "null") as unknown;
+}
+
 describe("mcp route", () => {
   beforeEach(() => {
     vi.stubEnv("ALEXANDRIA_PROCESS_MEMORY_INLINE", "false");
@@ -268,6 +299,85 @@ describe("mcp route", () => {
     expect(MCP_TOOLS[3]?.description).toBe(MEMORY_GET_DESCRIPTION);
   });
 
+  it("responds to the JSON-RPC initialize handshake with MCP server capabilities", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          capabilities: {},
+          clientInfo: {
+            name: "Real MCP Client",
+            version: "1.0.0",
+          },
+          protocolVersion: "2025-06-18",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        protocolVersion: "2025-06-18",
+        capabilities: {
+          tools: {
+            listChanged: false,
+          },
+        },
+        serverInfo: {
+          name: "alexandria",
+          title: "Alexandria",
+          version: "0.1.0",
+        },
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
+      p_key_prefix: "abcdef12",
+      p_presented_key: validApiKey,
+    });
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("accepts the initialized notification without a response body", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    await expect(response.text()).resolves.toBe("");
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("responds to JSON-RPC ping with an empty result", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: "ping-1",
+        method: "ping",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "ping-1",
+      result: {},
+    });
+    expect(response.status).toBe(200);
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
   it("returns the same tool catalog through tools/list", async () => {
     const { executorRpc, verifyRpc } = mockMcpRpc();
 
@@ -283,6 +393,32 @@ describe("mcp route", () => {
       surface: "mcp",
       tools: MCP_TOOLS,
     });
+    expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
+      p_key_prefix: "abcdef12",
+      p_presented_key: validApiKey,
+    });
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("returns the MCP tool catalog through JSON-RPC tools/list", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: "tools-1",
+        method: "tools/list",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "tools-1",
+      result: {
+        tools: MCP_TOOLS,
+      },
+    });
+    expect(response.status).toBe(200);
     expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
       p_key_prefix: "abcdef12",
       p_presented_key: validApiKey,
@@ -360,6 +496,117 @@ describe("mcp route", () => {
       p_workspace_id: "workspace-1",
     });
   });
+
+  it.each([
+    [
+      "memory_save",
+      {
+        content: "Save through JSON-RPC tools/call.",
+      },
+      {
+        ok: true,
+        service: "alexandria",
+        surface: "mcp",
+        method: "memory_save",
+        memory_id: "memory-1",
+        status: "processing",
+        message: "Memory accepted for processing.",
+      },
+    ],
+    [
+      "memory_search",
+      {
+        query: "Ashley Stambouli Shopify",
+      },
+      {
+        ok: true,
+        service: "alexandria",
+        surface: "mcp",
+        method: "memory_search",
+        memories: [
+          {
+            author_label: "MCP key",
+            content: "Ashley Stambouli uses Shopify.",
+            created_at: "2026-05-03T12:00:00.000Z",
+            kind: "fact",
+            memory_id: memoryId,
+            relevance_score: 0.88,
+            source: "mcp",
+            source_client: "Claude Desktop",
+            tags: ["client/ashley-stambouli"],
+          },
+        ],
+        total: 1,
+      },
+    ],
+    [
+      "memory_recall_recent",
+      {
+        limit: 2,
+      },
+      {
+        ok: true,
+        service: "alexandria",
+        surface: "mcp",
+        method: "memory_recall_recent",
+        memories: [
+          {
+            author_label: "MCP key",
+            content: "The deployment freeze starts Friday.",
+            created_at: "2026-05-03T12:00:00.000Z",
+            kind: "policy",
+            memory_id: memoryId,
+            source: "mcp",
+            source_client: "Claude Desktop",
+            tags: ["policy"],
+          },
+        ],
+      },
+    ],
+    [
+      "memory_get",
+      {
+        memory_id: memoryId,
+      },
+      {
+        ok: true,
+        service: "alexandria",
+        surface: "mcp",
+        method: "memory_get",
+        author_label: "MCP key",
+        content: "Ashley Stambouli uses Shopify.",
+        created_at: "2026-05-03T12:05:00.000Z",
+        kind: "fact",
+        memory_id: memoryId,
+        source: "mcp",
+        source_client: null,
+        superseded_by_memory_id: null,
+        tags: ["client/ashley-stambouli"],
+        updated_at: "2026-05-03T12:06:00.000Z",
+      },
+    ],
+  ])(
+    "returns MCP content for JSON-RPC tools/call %s",
+    async (toolName, args, expectedPayload) => {
+      mockMcpRpc();
+
+      const response = await POST(
+        makeRequest(validApiKey, {
+          jsonrpc: "2.0",
+          id: `${toolName}-call`,
+          method: "tools/call",
+          params: {
+            arguments: args,
+            name: toolName,
+          },
+        }),
+      );
+
+      await expect(
+        expectJsonRpcToolPayload(response, `${toolName}-call`),
+      ).resolves.toEqual(expectedPayload);
+    },
+  );
 
   it("accepts the minimal tools/call shape for memory_save", async () => {
     const { executorRpc } = mockMcpRpc();
@@ -601,6 +848,33 @@ describe("mcp route", () => {
 
     await expect(response.json()).resolves.toEqual(unsupportedPayload);
     expect(response.status).toBe(501);
+    expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
+      p_key_prefix: "abcdef12",
+      p_presented_key: validApiKey,
+    });
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("returns a JSON-RPC method error instead of 501 for unsupported JSON-RPC methods", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: 42,
+        method: "memory_delete",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 42,
+      error: {
+        code: -32601,
+        message: "Method not found.",
+      },
+    });
+    expect(response.status).toBe(200);
     expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
       p_key_prefix: "abcdef12",
       p_presented_key: validApiKey,
