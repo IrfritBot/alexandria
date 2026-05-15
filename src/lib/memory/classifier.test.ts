@@ -49,8 +49,8 @@ describe("classifier", () => {
     });
   });
 
-  it("does not extract JSON from prose around a markdown code fence", () => {
-    expect(() =>
+  it("parses classifier JSON from prose around a markdown code fence", () => {
+    expect(
       parseClassifierJson(`Here is the classification:
 
 \`\`\`json
@@ -60,6 +60,33 @@ describe("classifier", () => {
   "suggested_tags": ["policy/refunds"]
 }
 \`\`\``),
+    ).toEqual({
+      confidence: 0.82,
+      kind: "policy",
+      suggestedTags: ["policy/refunds"],
+    });
+  });
+
+  it("parses classifier JSON from prose without a code fence", () => {
+    expect(
+      parseClassifierJson(`Here is the classification:
+{
+  "kind": "judgment",
+  "confidence": 0.51,
+  "suggested_tags": ["priority"]
+}
+
+Let me know if you need anything else.`),
+    ).toEqual({
+      confidence: 0.51,
+      kind: "judgment",
+      suggestedTags: ["priority"],
+    });
+  });
+
+  it("rejects prose without a JSON object", () => {
+    expect(() =>
+      parseClassifierJson("This should be a policy with high confidence."),
     ).toThrow("classifier returned invalid JSON");
   });
 

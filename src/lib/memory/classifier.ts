@@ -75,7 +75,80 @@ function unwrapJsonMarkdownFence(text: string) {
     trimmed,
   );
 
-  return match ? match[1].trim() : text;
+  return match ? match[1].trim() : trimmed;
+}
+
+function getBalancedJsonObject(text: string, startIndex: number) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseJsonObjectCandidate(text: string) {
+  const trimmed = text.trim();
+  const candidates = [unwrapJsonMarkdownFence(trimmed)];
+
+  for (const match of trimmed.matchAll(
+    /```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/gi,
+  )) {
+    candidates.push(match[1].trim());
+  }
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed[index] !== "{") {
+      continue;
+    }
+
+    const candidate = getBalancedJsonObject(trimmed, index);
+
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+
+      if (isRecord(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Try the next narrow candidate before failing the provider response.
+    }
+  }
+
+  throw new ClassifierProviderError("classifier returned invalid JSON");
 }
 
 export function buildClassifierPrompt(content: string) {
@@ -131,13 +204,7 @@ export function parseClassifierJson(text: string): Pick<
   ClassifierResult,
   "confidence" | "kind" | "suggestedTags"
 > {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(unwrapJsonMarkdownFence(text));
-  } catch {
-    throw new ClassifierProviderError("classifier returned invalid JSON");
-  }
+  const parsed = parseJsonObjectCandidate(text);
 
   if (!isRecord(parsed) || !isClassifiedMemoryKind(parsed.kind)) {
     throw new ClassifierProviderError("classifier returned an invalid kind");

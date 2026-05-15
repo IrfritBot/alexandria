@@ -24,7 +24,7 @@ function migrationSql() {
   return readFileSync(
     join(
       process.cwd(),
-      "supabase/migrations/20260503170000_mcp_memory_read_tools.sql",
+      "supabase/migrations/20260514090000_mcp_read_visibility_conflict_review.sql",
     ),
     "utf8",
   );
@@ -217,9 +217,26 @@ describe("MCP memory read RPCs", () => {
     expect(sql).toContain("perform public.set_mcp_session");
     expect(sql).toContain("public.has_active_mcp_session(p_workspace_id)");
     expect(sql).toContain("m.workspace_id = p_workspace_id");
-    expect(sql).toContain("m.status = 'active'");
     expect(sql).toContain("m.deleted_at is null");
     expect(sql).toContain("m.superseded_by_memory_id is null");
+    expect(sql).toContain(
+      "create or replace function public.is_mcp_read_visible_memory",
+    );
+    expect(
+      sql.match(
+        /public\.is_mcp_read_visible_memory\(m\.workspace_id, m\.id, m\.status\)/g,
+      ),
+    ).toHaveLength(3);
+    expect(sql).toContain("p_status = 'active'");
+    expect(sql).toContain("p_status = 'conflict'");
+    expect(sql).toContain("from public.conflicts c");
+    expect(sql).toContain("c.status = 'unresolved'");
+    expect(sql).toContain("c.deleted_at is null");
+    expect(sql).toContain("c.source_memory_id = p_memory_id");
+    expect(sql).toContain("c.target_memory_id = p_memory_id");
+    expect(sql).toContain(
+      "grant execute on function public.is_mcp_read_visible_memory(uuid, uuid, text) to mcp_session_executor",
+    );
     expect(sql).toContain("source_client");
     expect(sql).toContain("author_label");
     expect(sql).toContain(
@@ -232,6 +249,7 @@ describe("MCP memory read RPCs", () => {
       "grant execute on function public.get_mcp_memory(uuid, uuid, uuid) to mcp_session_executor",
     );
     expect(sql).not.toContain("grant execute on function public.get_mcp_memory(uuid, uuid, uuid) to service_role");
+    expect(sql).not.toContain("grant select on public.conflicts");
     expect(sql).not.toContain("delete from public.memories");
   });
 });

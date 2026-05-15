@@ -137,6 +137,43 @@ function mapCandidateRow(row: Record<string, unknown>): ConflictCandidate | null
   };
 }
 
+function candidateKinds(kind: MemoryKind): MemoryKind[] {
+  return kind === "unknown" ? ["unknown"] : [kind, "unknown"];
+}
+
+function unresolvedConflictMemoryIds(
+  rows: unknown,
+  candidateIds: Set<string>,
+): Set<string> {
+  const memoryIds = new Set<string>();
+
+  if (!Array.isArray(rows)) {
+    return memoryIds;
+  }
+
+  for (const row of rows) {
+    if (!isRecord(row)) {
+      continue;
+    }
+
+    if (
+      typeof row.source_memory_id === "string" &&
+      candidateIds.has(row.source_memory_id)
+    ) {
+      memoryIds.add(row.source_memory_id);
+    }
+
+    if (
+      typeof row.target_memory_id === "string" &&
+      candidateIds.has(row.target_memory_id)
+    ) {
+      memoryIds.add(row.target_memory_id);
+    }
+  }
+
+  return memoryIds;
+}
+
 export function createSupabaseMemoryProcessingDatabase(
   client: SupabaseClientLike = createSupabaseServiceRoleClient(),
 ): MemoryProcessingDatabase {
@@ -292,8 +329,8 @@ export function createSupabaseMemoryProcessingDatabase(
         )
         .eq("workspace_id", input.workspaceId)
         .neq("id", input.memoryId)
-        .eq("kind", input.kind)
-        .eq("status", "active")
+        .in("kind", candidateKinds(input.kind))
+        .in("status", ["active", "conflict"])
         .is("deleted_at", null)
         .is("superseded_by_memory_id", null)
         .not("embedding", "is", null)
@@ -306,10 +343,35 @@ export function createSupabaseMemoryProcessingDatabase(
         return [];
       }
 
-      return data
+      const candidates = data
         .filter(isRecord)
         .map(mapCandidateRow)
         .filter((candidate): candidate is ConflictCandidate => Boolean(candidate));
+
+      if (candidates.length === 0) {
+        return [];
+      }
+
+      const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+      const candidateIdList = [...candidateIds].join(",");
+      const conflictResponse = await client
+        .from("conflicts")
+        .select("source_memory_id, target_memory_id")
+        .eq("workspace_id", input.workspaceId)
+        .eq("status", "unresolved")
+        .is("deleted_at", null)
+        .or(
+          `source_memory_id.in.(${candidateIdList}),target_memory_id.in.(${candidateIdList})`,
+        );
+
+      assertNoError(conflictResponse.error, "list unresolved conflict candidates");
+
+      const unresolvedMemoryIds = unresolvedConflictMemoryIds(
+        conflictResponse.data,
+        candidateIds,
+      );
+
+      return candidates.filter((candidate) => !unresolvedMemoryIds.has(candidate.id));
     },
 
     async updateMemory(input) {
