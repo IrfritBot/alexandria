@@ -30,6 +30,16 @@ function migrationSql() {
   );
 }
 
+function searchFallbackMigrationSql() {
+  return readFileSync(
+    join(
+      process.cwd(),
+      "supabase/migrations/20260515093000_mcp_search_memory_term_fallback.sql",
+    ),
+    "utf8",
+  );
+}
+
 describe("MCP memory read payload validation", () => {
   it("normalizes search input, caps limit, and normalizes tag filters", () => {
     expect(
@@ -249,6 +259,46 @@ describe("MCP memory read RPCs", () => {
       "grant execute on function public.get_mcp_memory(uuid, uuid, uuid) to mcp_session_executor",
     );
     expect(sql).not.toContain("grant execute on function public.get_mcp_memory(uuid, uuid, uuid) to service_role");
+    expect(sql).not.toContain("grant select on public.conflicts");
+    expect(sql).not.toContain("delete from public.memories");
+  });
+
+  it("documents the search fallback migration keeps visibility and ranks strict matches first", () => {
+    const sql = searchFallbackMigrationSql().toLowerCase();
+
+    expect(sql).toContain("create or replace function public.search_mcp_memories");
+    expect(sql).not.toContain(
+      "create or replace function public.is_mcp_read_visible_memory",
+    );
+    expect(sql).not.toContain(
+      "create or replace function public.recall_recent_mcp_memories",
+    );
+    expect(sql).not.toContain("create or replace function public.get_mcp_memory");
+
+    expect(sql).toContain("perform public.set_mcp_session");
+    expect(sql).toContain("public.has_active_mcp_session(p_workspace_id)");
+    expect(sql).toContain(
+      "public.is_mcp_read_visible_memory(m.workspace_id, m.id, m.status)",
+    );
+    expect(sql).toContain("m.workspace_id = p_workspace_id");
+    expect(sql).toContain("m.deleted_at is null");
+    expect(sql).toContain("m.superseded_by_memory_id is null");
+    expect(sql).toContain("(p_kind is null or m.kind = p_kind)");
+
+    expect(sql).toContain("raw_query_terms as");
+    expect(sql).toContain("regexp_matches(v_query, '[[:alnum:]]{3,}', 'g')");
+    expect(sql).toContain("plainto_tsquery('english'::regconfig, rqt.term)");
+    expect(sql).toContain("where numnode(q.term_tsquery) > 0");
+    expect(sql).toContain("fallback_term_match.rank > 0");
+    expect(sql).toContain("m.search_document @@ qt.term_tsquery");
+    expect(sql).toContain("wt.name ilike ('%' || qt.term || '%')");
+
+    expect(sql).toContain("when c.strict_match then least");
+    expect(sql).toContain("else least(\n          0.009::numeric");
+    expect(sql).toContain("order by r.strict_match desc, r.score desc");
+    expect(sql).toContain(
+      "grant execute on function public.search_mcp_memories(uuid, uuid, text, integer, text, jsonb) to mcp_session_executor",
+    );
     expect(sql).not.toContain("grant select on public.conflicts");
     expect(sql).not.toContain("delete from public.memories");
   });
