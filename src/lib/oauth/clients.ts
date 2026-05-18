@@ -24,7 +24,48 @@ export type NormalizeClientPayloadResult =
     };
 
 function isLoopbackHost(hostname: string) {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  );
+}
+
+function parseRedirectUri(redirectUri: string) {
+  try {
+    return new URL(redirectUri);
+  } catch {
+    return null;
+  }
+}
+
+function isLoopbackRedirectUrl(url: URL) {
+  return url.protocol === "http:" && isLoopbackHost(url.hostname);
+}
+
+function isEquivalentLoopbackRedirectUri(
+  redirectUri: string,
+  registeredRedirectUri: string,
+) {
+  const requestedUrl = parseRedirectUri(redirectUri);
+  const registeredUrl = parseRedirectUri(registeredRedirectUri);
+
+  if (!requestedUrl || !registeredUrl) {
+    return false;
+  }
+
+  if (
+    !isLoopbackRedirectUrl(requestedUrl) ||
+    !isLoopbackRedirectUrl(registeredUrl)
+  ) {
+    return false;
+  }
+
+  return (
+    requestedUrl.pathname === registeredUrl.pathname &&
+    requestedUrl.search === registeredUrl.search
+  );
 }
 
 export function isValidRedirectUri(redirectUri: string) {
@@ -38,11 +79,9 @@ export function isValidRedirectUri(redirectUri: string) {
     return false;
   }
 
-  let url: URL;
+  const url = parseRedirectUri(redirectUri);
 
-  try {
-    url = new URL(redirectUri);
-  } catch {
+  if (!url) {
     return false;
   }
 
@@ -139,7 +178,11 @@ export function isRedirectUriRegistered(
   redirectUri: string,
   registeredRedirectUris: readonly string[],
 ) {
-  return registeredRedirectUris.includes(redirectUri);
+  return registeredRedirectUris.some(
+    (registeredRedirectUri) =>
+      registeredRedirectUri === redirectUri ||
+      isEquivalentLoopbackRedirectUri(redirectUri, registeredRedirectUri),
+  );
 }
 
 export function hasRegisteredRedirectUri(

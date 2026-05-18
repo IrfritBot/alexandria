@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   generateOauthClientId,
+  isRedirectUriRegistered,
   normalizeOauthClientRegistrationPayload,
   validateRedirectUri,
 } from "./clients";
@@ -23,6 +24,29 @@ describe("OAuth client helpers", () => {
     expect(validateRedirectUri("https://example.com/callback#fragment")).toBe(
       false,
     );
+  });
+
+  it("matches native loopback redirects across Codex callback host and port variants", () => {
+    expect(
+      isRedirectUriRegistered("http://127.0.0.1:54321/callback", [
+        "http://localhost:12345/callback",
+      ]),
+    ).toBe(true);
+    expect(
+      isRedirectUriRegistered("http://[::1]:54321/callback", [
+        "http://localhost:12345/callback",
+      ]),
+    ).toBe(true);
+    expect(
+      isRedirectUriRegistered("http://127.0.0.1:54321/other", [
+        "http://localhost:12345/callback",
+      ]),
+    ).toBe(false);
+    expect(
+      isRedirectUriRegistered("https://client.example/other", [
+        "https://client.example/callback",
+      ]),
+    ).toBe(false);
   });
 
   it("normalizes dynamic registration payloads", () => {
