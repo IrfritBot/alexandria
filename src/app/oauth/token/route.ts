@@ -1,4 +1,5 @@
 import { verifyPkce } from "../../../lib/oauth/crypto";
+import { isRedirectUriRegistered } from "../../../lib/oauth/clients";
 import {
   consumeOAuthAuthorizationCode,
   createOAuthMcpKey,
@@ -66,7 +67,7 @@ async function authorizationCodeGrant(formData: FormData) {
 
   if (
     consumedCode.clientId !== clientId ||
-    consumedCode.redirectUri !== redirectUri
+    !isRedirectUriRegistered(redirectUri, [consumedCode.redirectUri])
   ) {
     return tokenError("invalid_grant");
   }

@@ -258,6 +258,28 @@ describe("OAuth token route", () => {
     ).resolves.toEqual({ error: "invalid_grant" });
   });
 
+  it("accepts equivalent loopback redirect URIs during authorization-code exchange", async () => {
+    mockService({
+      codeRows: [
+        {
+          ...defaultCodeRow,
+          redirect_uri: "http://localhost:54321/callback",
+        },
+      ],
+    });
+
+    const response = await POST(
+      authorizationCodeRequest({
+        redirect_uri: "http://127.0.0.1:12345/callback",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      token_type: "Bearer",
+    });
+  });
+
   it("rejects authorization-code exchange when membership was removed after consent", async () => {
     const { mcpInsert, tokenInsert } = mockService({ membershipRow: null });
 
