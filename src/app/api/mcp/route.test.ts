@@ -5,6 +5,8 @@ import { inngest } from "../../../lib/inngest/client";
 import { createSupabaseMcpExecutorClient } from "../../../lib/supabase/mcp-executor";
 import { createSupabaseServiceRoleClient } from "../../../lib/supabase/service-role";
 import {
+  MCP_PROMPTS,
+  MCP_SERVER_INSTRUCTIONS,
   MCP_TOOLS,
   MEMORY_GET_DESCRIPTION,
   MEMORY_RECALL_RECENT_DESCRIPTION,
@@ -297,6 +299,18 @@ describe("mcp route", () => {
     expect(MCP_TOOLS[1]?.description).toBe(MEMORY_SEARCH_DESCRIPTION);
     expect(MCP_TOOLS[2]?.description).toBe(MEMORY_RECALL_RECENT_DESCRIPTION);
     expect(MCP_TOOLS[3]?.description).toBe(MEMORY_GET_DESCRIPTION);
+    expect(MCP_TOOLS[0]?.annotations).toMatchObject({
+      destructiveHint: false,
+      idempotentHint: false,
+      readOnlyHint: false,
+    });
+    for (const tool of MCP_TOOLS.slice(1)) {
+      expect(tool.annotations).toMatchObject({
+        destructiveHint: false,
+        idempotentHint: true,
+        readOnlyHint: true,
+      });
+    }
   });
 
   it("responds to the JSON-RPC initialize handshake with MCP server capabilities", async () => {
@@ -324,10 +338,14 @@ describe("mcp route", () => {
       result: {
         protocolVersion: "2025-06-18",
         capabilities: {
+          prompts: {
+            listChanged: false,
+          },
           tools: {
             listChanged: false,
           },
         },
+        instructions: MCP_SERVER_INSTRUCTIONS,
         serverInfo: {
           name: "alexandria",
           title: "Alexandria",
@@ -419,10 +437,149 @@ describe("mcp route", () => {
       },
     });
     expect(response.status).toBe(200);
+    expect(
+      MCP_TOOLS.find((tool) => tool.name === "memory_save")?.annotations,
+    ).toMatchObject({
+      destructiveHint: false,
+      idempotentHint: false,
+      readOnlyHint: false,
+    });
+    for (const toolName of [
+      "memory_search",
+      "memory_recall_recent",
+      "memory_get",
+    ]) {
+      expect(
+        MCP_TOOLS.find((tool) => tool.name === toolName)?.annotations,
+      ).toMatchObject({
+        destructiveHint: false,
+        idempotentHint: true,
+        readOnlyHint: true,
+      });
+    }
     expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
       p_key_prefix: "abcdef12",
       p_presented_key: validApiKey,
     });
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("exposes proactive memory guidance and safety boundaries in tool descriptions", () => {
+    expect(MEMORY_SAVE_DESCRIPTION).toContain(
+      "Customer, client, vendor, or partner facts",
+    );
+    expect(MEMORY_SAVE_DESCRIPTION).toContain(
+      "Decisions, policies, constraints, preferences, and project history",
+    );
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Stable operational details");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("ASK FIRST");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Ambiguous personal information");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Private or sensitive facts");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Speculation");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("DO NOT SAVE");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Current-task scratchpad");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("One-off instructions");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Secrets, tokens, credentials");
+    expect(MEMORY_SAVE_DESCRIPTION).toContain("Private medical, legal, financial");
+    expect(MEMORY_SAVE_DESCRIPTION).not.toContain("using Alexandria");
+    expect(MEMORY_SEARCH_DESCRIPTION).toContain(
+      "CALL THIS TOOL PROACTIVELY at the start of any conversation",
+    );
+  });
+
+  it("returns optional MCP prompts through JSON-RPC prompts/list", async () => {
+    const { executorRpc, verifyRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: "prompts-1",
+        method: "prompts/list",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "prompts-1",
+      result: {
+        prompts: MCP_PROMPTS,
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(MCP_PROMPTS.map((prompt) => prompt.name)).toEqual([
+      "alexandria_memory_policy",
+      "alexandria_session_start",
+      "alexandria_save_candidate",
+    ]);
+    expect(verifyRpc).toHaveBeenCalledWith("verify_mcp_api_key", {
+      p_key_prefix: "abcdef12",
+      p_presented_key: validApiKey,
+    });
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("returns optional MCP prompt messages through JSON-RPC prompts/get", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: "prompt-get-1",
+        method: "prompts/get",
+        params: {
+          name: "alexandria_save_candidate",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "prompt-get-1",
+      result: {
+        description: "Alexandria save-candidate decision policy",
+        messages: [
+          {
+            content: {
+              text: expect.stringContaining(
+                "Do not save current-task scratchpad",
+              ),
+              type: "text",
+            },
+            role: "user",
+          },
+        ],
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(executorRpc).not.toHaveBeenCalled();
+  });
+
+  it("returns a JSON-RPC invalid params error for unknown prompts", async () => {
+    const { executorRpc } = mockMcpRpc();
+
+    const response = await POST(
+      makeRequest(validApiKey, {
+        jsonrpc: "2.0",
+        id: "prompt-get-unknown",
+        method: "prompts/get",
+        params: {
+          name: "unknown_prompt",
+        },
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "prompt-get-unknown",
+      error: {
+        code: -32602,
+        message: "Unknown prompt.",
+        data: {
+          name: "unknown_prompt",
+        },
+      },
+    });
+    expect(response.status).toBe(200);
     expect(executorRpc).not.toHaveBeenCalled();
   });
 

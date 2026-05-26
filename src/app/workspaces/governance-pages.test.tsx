@@ -6,6 +6,7 @@ import AuditPage from "./[slug]/audit/page";
 import ConflictsPage from "./[slug]/conflicts/page";
 import MemoryDetailPage from "./[slug]/memories/[memoryId]/page";
 import MemoriesPage from "./[slug]/memories/page";
+import SetupPage from "./[slug]/setup/page";
 import UsagePage from "./[slug]/usage/page";
 
 vi.mock("server-only", () => ({}));
@@ -294,6 +295,46 @@ describe("workspace memory pages", () => {
     expect(html).toContain("MCP key");
     expect(html).toContain("Recent revisions");
     expect(html).toContain("<td>2</td>");
+  });
+
+  it("renders member-safe client setup without key management details", async () => {
+    const { tableCalls } = mockSupabase({
+      role: "member",
+      rows: {
+        mcp_keys: [
+          {
+            key_hash: "never-render",
+            key_prefix: "abc123ef",
+            name: "Hidden key",
+          },
+        ],
+      },
+    });
+
+    const html = renderToString(
+      await SetupPage({
+        params: Promise.resolve({ slug: "alexandria-team" }),
+      }),
+    );
+
+    expect(tableCalls).toEqual([
+      "workspaces",
+      "profiles",
+      "workspace_members",
+    ]);
+    expect(html).toContain("Client setup");
+    expect(html).toContain("Remote MCP URL");
+    expect(html).toContain("OAuth scopes");
+    expect(html).toContain("Claude");
+    expect(html).toContain("Cursor");
+    expect(html).toContain("Codex");
+    expect(html).toContain("Generic MCP client");
+    expect(html).toContain("memory_search");
+    expect(html).toContain("memory_save");
+    expect(html).not.toContain("Create key");
+    expect(html).not.toContain("one-time");
+    expect(html).not.toContain("alex_");
+    expect(html).not.toContain("never-render");
   });
 });
 

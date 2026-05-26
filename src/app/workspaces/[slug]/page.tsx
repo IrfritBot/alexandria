@@ -68,6 +68,12 @@ export default async function WorkspaceDashboardPage({
           </Link>
           <Link
             className={styles.secondaryButton}
+            href={`/workspaces/${context.workspace.slug}/setup`}
+          >
+            Set up clients
+          </Link>
+          <Link
+            className={styles.secondaryButton}
             href={`/workspaces/${context.workspace.slug}/keys`}
           >
             Manage MCP keys
@@ -81,8 +87,8 @@ export default async function WorkspaceDashboardPage({
         </div>
         {!isAdmin ? (
           <p className={styles.muted}>
-            Members can browse workspace memory. MCP keys, conflicts, audit, and
-            usage are admin-only.
+            Members can browse workspace memory and set up clients. MCP keys,
+            conflicts, audit, and usage are admin-only.
           </p>
         ) : null}
       </section>
