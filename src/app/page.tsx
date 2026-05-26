@@ -152,7 +152,12 @@ export default async function Home() {
         <p className={styles.eyebrow}>Alexandria</p>
         <h1 id="page-title">Welcome</h1>
         <p>{user.email}</p>
-        <Link href="/workspaces/new">Create workspace</Link>
+        <div className={styles.homeActions}>
+          <Link href="/workspaces/new">Create workspace</Link>
+          <form action="/logout" method="post">
+            <button type="submit">Sign out</button>
+          </form>
+        </div>
         {workspaces.length > 0 ? (
           <ul aria-label="Your workspaces">
             {workspaces.map((workspace) => (

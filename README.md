@@ -67,7 +67,7 @@ path.
 
 4. Complete the browser setup:
 
-- Open `http://localhost:3000/login`, enter a demo email, then open the local email from Inbucket at `http://localhost:54324` and follow the magic link.
+- Open `http://localhost:3000/signup`, enter a demo email, then open the local email from Inbucket at `http://localhost:54324` and follow the magic link. Existing demo users can use `http://localhost:3000/login`.
 - Create a workspace at `http://localhost:3000/workspaces/new`. Demo values: name `Alexandria Demo`, slug `alexandria-demo`, context `Shared demo workspace for Alexandria MVP memory save, processing, search, and governance review.`
 - Open `http://localhost:3000/workspaces/alexandria-demo/keys`, create an MCP key named `MVP demo check`, and keep the one-time plaintext key.
 
@@ -89,12 +89,35 @@ local app; otherwise the command prints the memories URL to open while signed in
 
 ## Auth Flow
 
-Alexandria uses Supabase magic-link auth for the web user path. `/login` sends an OTP email with an `emailRedirectTo` callback at `/auth/callback`; the callback exchanges the code for a cookie-backed session, synchronizes the user's `profiles` row through `public.ensure_profile(...)`, then redirects to a validated internal `next` path.
+Alexandria uses Supabase Auth for the web user path. `/login` and `/signup` both offer email magic links and Google OAuth. Email login calls Supabase OTP with `shouldCreateUser: false`; email signup calls the same Supabase OTP path with `shouldCreateUser: true`. Google is intentionally shown as `Continue with Google` on both screens because Supabase OAuth is a unified provider entry point.
+
+All human auth returns through `/auth/callback`. The callback exchanges the Supabase code for a cookie-backed session, synchronizes the user's `profiles` row through `public.ensure_profile(...)`, then redirects to a validated internal `next` path. Signed-in users who visit `/login` or `/signup` are redirected directly to that safe `next` path, falling back to `/`.
 
 The only redirect helper is `src/lib/auth/safe-next.ts`. It defaults to `/` and rejects external URLs, protocol injection, double slashes, backslashes, whitespace, `/api/...`, and `/auth/...` targets.
 The one narrow exception is `/oauth/authorize?...`: it is allowed as a login
 continuation only so OAuth clients can carry validated `redirect_uri` values
 through browser sign-in.
+
+`POST /logout` signs the cookie-backed Supabase session out and redirects to `/login`.
+
+### Google OAuth Provider Setup
+
+Google OAuth requires provider configuration outside committed app code:
+
+- Create a Google Cloud OAuth client ID and secret. The Google authorized redirect URI should be the Supabase Auth callback, for example `http://127.0.0.1:54321/auth/v1/callback` locally or `https://<project-ref>.supabase.co/auth/v1/callback` for hosted Supabase.
+- Enable the Google provider in Supabase Auth and inject the Google client ID/secret through Supabase-managed secrets or local environment variables. Do not commit real provider secrets.
+- Add the Alexandria callback URLs to the Supabase Auth redirect allow-list, including `http://localhost:3000/auth/callback`, `http://127.0.0.1:3000/auth/callback`, and the approved deployed `/auth/callback` URL.
+
+For local Supabase CLI testing, export provider secrets in the shell before starting or resetting Supabase:
+
+```bash
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID='<local google oauth client id>'
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET='<local google oauth client secret>'
+supabase start
+supabase db reset
+```
+
+The committed `supabase/config.toml` keeps Google disabled/commented as a local reference. Production Google provider enablement is a manual runtime/auth configuration change that requires explicit approval and secret injection outside git.
 
 ## Supabase Clients
 
@@ -128,13 +151,16 @@ MCP key verification is the exception: `public.verify_mcp_api_key(...)` is calla
 - `GET /oauth/authorize` and `POST /oauth/authorize` guide signed-in users through workspace/scopes consent.
 - `POST /oauth/token` exchanges PKCE authorization codes and rotates refresh tokens for Alexandria OAuth bearer tokens.
 - `GET /api/inngest`, `POST /api/inngest`, and `PUT /api/inngest` serve the Inngest worker functions.
-- `GET /login` renders the magic-link sign-in form.
+- `GET /login` renders the email/Google login screen.
+- `GET /signup` renders the email/Google signup screen.
 - `GET /auth/callback` exchanges Supabase auth codes, syncs profiles, and safely redirects.
+- `POST /logout` signs out the Supabase Auth session and redirects to `/login`.
 - `POST /api/workspaces` creates a workspace through the bootstrap RPC.
 - `GET /workspaces/new` renders the minimal workspace creation form.
 - `GET /workspaces/[slug]` renders the authenticated workspace dashboard.
 - `GET /workspaces/[slug]/memories` browses and full-text searches workspace-scoped memories.
 - `GET /workspaces/[slug]/memories/[memoryId]` renders a read-only memory detail page with tags and recent revisions.
+- `GET /workspaces/[slug]/setup` renders the member-safe client setup page with OAuth MCP connection details and proactive-capture policy blocks for Claude, Cursor, Codex, and generic MCP clients. It does not expose MCP key creation or one-time key material.
 - `GET /workspaces/[slug]/keys` renders admin-only MCP key list/create/revoke controls.
 - `POST /workspaces/[slug]/keys/create` creates an MCP key through `public.issue_mcp_key(...)` and returns the one-time plaintext value without putting it in the URL.
 - `POST /workspaces/[slug]/keys/[keyId]/revoke` revokes an MCP key through `public.revoke_mcp_key(...)`.

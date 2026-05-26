@@ -153,6 +153,39 @@ describe("auth callback route", () => {
     expectRedirect(response, "https://alexandria.test/workspaces/new");
   });
 
+  it("syncs Google-style name metadata when full_name is absent", async () => {
+    const { rpc } = mockSupabase({
+      user: {
+        email: "google-user@example.com",
+        user_metadata: {
+          name: "Google User",
+        },
+      },
+    });
+
+    const response = await GET(makeRequest("/auth/callback?code=ok"));
+
+    expect(rpc).toHaveBeenCalledWith("ensure_profile", {
+      p_display_name: "Google User",
+      p_email: "google-user@example.com",
+    });
+    expectRedirect(response, "https://alexandria.test/");
+  });
+
+  it("preserves a safe OAuth authorize continuation on success", async () => {
+    mockSupabase();
+    const authorizeNext =
+      "/oauth/authorize?response_type=code&client_id=alex_client_1&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&code_challenge=abc&code_challenge_method=S256";
+
+    const response = await GET(
+      makeRequest(
+        `/auth/callback?code=ok&next=${encodeURIComponent(authorizeNext)}`,
+      ),
+    );
+
+    expectRedirect(response, `https://alexandria.test${authorizeNext}`);
+  });
+
   it("falls back to root when next is malicious", async () => {
     mockSupabase();
 
