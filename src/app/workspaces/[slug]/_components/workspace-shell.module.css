@@ -293,6 +293,7 @@
   color: #eff8f4;
   overflow-x: auto;
   padding: 14px;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 640px) {

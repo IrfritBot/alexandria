@@ -106,6 +106,9 @@ describe("home page", () => {
     expect(html).toContain("person@example.com");
     expect(html).toContain('href="/workspaces/new"');
     expect(html).toContain("Create workspace");
+    expect(html).toContain('action="/logout"');
+    expect(html).toContain('method="post"');
+    expect(html).toContain("Sign out");
     expect(html).toContain("Your workspaces");
     expect(html).toContain("Alexandria Team");
     expect(html).toContain("alexandria-team");

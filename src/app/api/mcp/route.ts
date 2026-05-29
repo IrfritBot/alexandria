@@ -13,7 +13,11 @@ import {
   type MemoryReadField,
 } from "../../../lib/mcp/memory-read";
 import {
+  getMcpPrompt,
+  isMcpPromptName,
   isMcpToolName,
+  MCP_PROMPTS,
+  MCP_SERVER_INSTRUCTIONS,
   MCP_TOOLS,
   type McpToolName,
 } from "../../../lib/mcp/tool-descriptions";
@@ -278,10 +282,14 @@ function initializeResult(params: unknown) {
   return {
     protocolVersion: negotiateProtocolVersion(params),
     capabilities: {
+      prompts: {
+        listChanged: false,
+      },
       tools: {
         listChanged: false,
       },
     },
+    instructions: MCP_SERVER_INSTRUCTIONS,
     serverInfo: SERVER_INFO,
   };
 }
@@ -554,6 +562,26 @@ async function handleJsonRpcRequest(
     return jsonRpcResult(id, {
       tools: MCP_TOOLS,
     });
+  }
+
+  if (body.method === "prompts/list") {
+    return jsonRpcResult(id, {
+      prompts: MCP_PROMPTS,
+    });
+  }
+
+  if (body.method === "prompts/get") {
+    if (!isRecord(body.params) || typeof body.params.name !== "string") {
+      return jsonRpcError(id, -32602, "Invalid params.");
+    }
+
+    if (!isMcpPromptName(body.params.name)) {
+      return jsonRpcError(id, -32602, "Unknown prompt.", {
+        name: body.params.name,
+      });
+    }
+
+    return jsonRpcResult(id, getMcpPrompt(body.params.name));
   }
 
   if (body.method === "tools/call") {

@@ -11,6 +11,7 @@ type WorkspaceShellProps = {
     | "dashboard"
     | "keys"
     | "memories"
+    | "setup"
     | "usage";
   children: React.ReactNode;
   context: WebWorkspaceContext;
@@ -24,6 +25,7 @@ const NAV_ITEMS: Array<{
 }> = [
   { id: "dashboard", label: "Dashboard", path: "" },
   { id: "memories", label: "Memories", path: "/memories" },
+  { id: "setup", label: "Setup", path: "/setup" },
   { adminOnly: true, id: "keys", label: "MCP keys", path: "/keys" },
   { adminOnly: true, id: "conflicts", label: "Conflicts", path: "/conflicts" },
   { adminOnly: true, id: "audit", label: "Audit", path: "/audit" },

@@ -1,65 +1,39 @@
-"use client";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-import { type FormEvent, useState } from "react";
+import { AuthPanel } from "@/app/auth/_components/auth-panel";
+import {
+  firstSearchParamValue,
+  getAuthPageState,
+  getAuthRequestOrigin,
+} from "@/lib/auth/auth-page";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+export const dynamic = "force-dynamic";
 
-function getForwardedNext() {
-  if (typeof window === "undefined") {
-    return "/";
-  }
+type AuthPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
-  return new URLSearchParams(window.location.search).get("next") ?? "/";
-}
+export default async function LoginPage({ searchParams }: AuthPageProps) {
+  const queryParams = (await searchParams) ?? {};
+  const requestHeaders = await headers();
+  const supabase = await createSupabaseServerClient();
+  const state = await getAuthPageState({
+    origin: getAuthRequestOrigin(requestHeaders),
+    rawNext: firstSearchParamValue(queryParams.next),
+    supabase,
+  });
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle",
-  );
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatus("sending");
-
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", getForwardedNext());
-
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: callbackUrl.toString(),
-      },
-    });
-
-    setStatus(error ? "error" : "sent");
+  if (state.kind === "redirect") {
+    redirect(state.location);
   }
 
   return (
-    <main>
-      <section aria-labelledby="login-title">
-        <h1 id="login-title">Sign in</h1>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          <button type="submit" disabled={status === "sending"}>
-            Send magic link
-          </button>
-        </form>
-        {status === "sent" ? <p role="status">check your email</p> : null}
-        {status === "error" ? (
-          <p role="alert">Unable to send magic link.</p>
-        ) : null}
-      </section>
-    </main>
+    <AuthPanel
+      callbackUrl={state.callbackUrl}
+      initialError={firstSearchParamValue(queryParams.error)}
+      mode="login"
+    />
   );
 }
